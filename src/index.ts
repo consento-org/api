@@ -1,11 +1,9 @@
 import { IAPI, IAPIOptions } from './types'
 import { Notifications } from './notifications'
-
 import * as crypto from '@consento/crypto'
 
-export {
-  crypto
-}
+export { crypto }
+export * from '@consento/crypto/types'
 export * from './notifications/types'
 export * from './types'
 
