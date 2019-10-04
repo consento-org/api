@@ -9,7 +9,7 @@ export {
 export * from './notifications/types'
 export * from './types'
 
-export function api ({ cryptoCore, notificationTransport }: IAPIOptions): IAPI {
+export function setup ({ cryptoCore, notificationTransport }: IAPIOptions): IAPI {
   return {
     notifications: new Notifications({
       transport: notificationTransport
