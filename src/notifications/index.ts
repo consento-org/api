@@ -1,15 +1,18 @@
-import { ISender, IReceiver, IEncodable } from '@consento/crypto'
-import { INotifications, INotificationsTransport, INotificationsOptions, INotificationsHandler } from './types'
+import { ISender, IReceiver, IEncodable, IEncryptedMessage } from '@consento/crypto'
+import { INotifications, INotificationsTransport, INotificationsOptions } from './types'
 import { EventEmitter } from 'events'
 
 export class Notifications<MessageFormat extends IEncodable = IEncodable> extends EventEmitter implements INotifications {
   _transport: INotificationsTransport
   _receivers: { [receiverIdBase64: string]: IReceiver }
 
+  handle: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void
+
   constructor ({ transport }: INotificationsOptions) {
     super()
     this._transport = transport
-    transport.addListener('message', (receiverIdBase64: string, encryptedMessage: any) => {
+    this._receivers = {}
+    this.handle = (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => {
       (async () => {
         const receiver = this._receivers[receiverIdBase64]
         if (receiver === undefined) {
@@ -31,12 +34,7 @@ export class Notifications<MessageFormat extends IEncodable = IEncodable> extend
           })
         }
       })().catch(error => this.emit('error', error))
-    })
-    this._receivers = {}
-  }
-
-  addHandler (handler: INotificationsHandler<MessageFormat>): void {
-    this.addListener('message', handler)
+    }
   }
 
   async subscribe (receivers: IReceiver[], force: boolean = false): Promise<boolean> {
@@ -76,7 +74,7 @@ export class Notifications<MessageFormat extends IEncodable = IEncodable> extend
     return true
   }
 
-  async send (sender: ISender, message: IEncodable): Promise<string[]> {
+  async send (sender: ISender, message: MessageFormat): Promise<string[]> {
     return this._transport.send(sender, await sender.encrypt(message))
   }
 }

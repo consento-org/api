@@ -61,6 +61,12 @@ Of course it is possible to unsubscribe from receiving messages:
 notifications.unsubscribe(receiver)
 ```
 
+If the transport receives a method it needs to call
+
+```javascript
+notifications.handle(idBase64, encryptedMessage)
+```
+
 ## License
 
 [MIT](./LICENSE)
