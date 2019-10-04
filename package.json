@@ -1,6 +1,6 @@
 {
   "name": "@consento/api",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "JavasScript API for building things with consento.",
   "main": "index.js",
   "private": true,
@@ -39,7 +39,7 @@
     "/src/types/"
   ],
   "dependencies": {
-    "@consento/crypto": "0.0.5",
+    "@consento/crypto": "0.0.6",
     "buffer": "^5.4.3",
     "events": "^3.0.0"
   },
