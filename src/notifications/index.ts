@@ -1,5 +1,5 @@
 import { ISender, IReceiver, IEncodable, IEncryptedMessage } from '@consento/crypto'
-import { INotifications, INotificationsTransport, INotificationsOptions, INotificationProcessor, INotification, ISuccessNotification, INotificationError } from './types'
+import { INotifications, INotificationsTransport, INotificationsOptions, IReceive, IConnection, INotificationProcessor, INotification, ISuccessNotification, INotificationError, IBodyFilter } from './types'
 
 export function isSuccess (input: INotification): input is ISuccessNotification {
   return input.type === 'success'
@@ -129,5 +129,53 @@ export class Notifications implements INotifications {
 
   async send (sender: ISender, message: IEncodable): Promise<string[]> {
     return this._transport.send(sender, await sender.encrypt(message))
+  }
+
+  receive <T extends IEncodable> (receiver: IReceiver, filter?: IBodyFilter<T>, timeout?: number): IReceive<T> {
+    let _resolve: (t: T) => any
+    let _reject: (error: Error) => void
+    let timer: number
+    const promise = final(new Promise<T>((resolve, reject) => {
+      _resolve = resolve
+      _reject = reject
+    }), async () => {
+      this.processors.delete(processor)
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
+      await this.unsubscribe([receiver])
+    })
+    if (timeout !== undefined && timeout !== null) {
+      timer = setTimeout(() => _reject(Object.assign(new Error(`Not received within ${timeout} milliseconds`), { code: 'timeout', timeout })), timeout)
+    }
+    const processor = (message: INotification): void => {
+      (async () => {
+        if (isSuccess(message) && message.receiverIdBase64 === await receiver.idBase64()) {
+          const body = message.body
+          if (filter === undefined || filter === null || filter(body)) {
+            _resolve(body as T)
+          }
+        }
+      })().catch(_reject)
+    }
+    const subscription = this.subscribe([receiver])
+    this.processors.add(processor)
+    return {
+      promise: subscription.then(async () => promise),
+      cancel: async (): Promise<void> => {
+        _reject(new Error('cancelled'))
+        try {
+          await promise
+        } catch (_) {}
+      }
+    }
+  }
+
+  sendAndReceive <T extends IEncodable = IEncodable> (connection: IConnection, message: IEncodable, filter?: IBodyFilter<T>, timeout?: number): IReceive<T> {
+    const { promise, cancel } = this.receive(connection.receiver, filter, timeout)
+    return {
+      promise: this.send(connection.sender, message).then(async () => promise),
+      cancel
+    }
   }
 }

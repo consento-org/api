@@ -79,6 +79,50 @@ If the transport receives a method it needs to call
 notifications.handle(idBase64, encryptedMessage)
 ```
 
+For simple one-time reading of a request you can also subscribe, receive and
+unsubscribe from a channel.
+
+```javascript
+const { promise, cancel } = notifications.receive(receiver)
+
+const response = await promise // To receive the next notification
+await cancel() // To cancel the receiving of a notification
+```
+
+You can also send a message before receiving with the `sendAndReceive` helper:
+
+```javascript
+const message = 'Hello World'
+const { promise, cancel } = notifications.sendAndReceive({ sender, receiver }, message)
+```
+
+In extension it is possible to verify the body message by using a filter:
+
+```typescript
+import { IEncodable } from '@consento/api'
+
+const isStringLen32 = (body: IEncodable): body is string => typeof body === 'string' && body.length === 32
+const { promise } = notifications.receive(receiver, isStringLen32)
+
+const response: string = await promise // only resolves if a 32 character string has been sent received on the channel
+```
+
+... and furthermore it is possible to add a timeout to receiving a message:
+
+```javascript
+const { promise } = notifications.receive(receiver, null, 1000)
+
+try {
+  const data = await promise
+} catch (err) {
+  err.code === 'timeout'
+  err.timeout === 1000
+}
+```
+
+_(You can also pass a filter & timeout to `sendAndReceive`)_
+
+
 ## License
 
 [MIT](./LICENSE)

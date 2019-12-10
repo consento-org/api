@@ -2,7 +2,7 @@ import { setup, IAnnonymous, IReceiver, IEncryptedMessage } from '@consento/cryp
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { cores } from '@consento/crypto/core/cores'
 import { Notifications, isError, isSuccess } from '../index'
-import { INotification } from '../types'
+import { INotificationsTransport, INotification } from '../types'
 
 const transportStub = {
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -135,6 +135,155 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       await n.subscribe([receiver])
       await n.unsubscribe([receiver])
       n.handle(idBase64, await sender.encrypt(sent))
+    })
+
+    it('receiving a certain message', async () => {
+      const sender = Sender.create()
+      const receiver = sender.newReceiver()
+      const ops = [] as string[]
+      const transport: INotificationsTransport = {
+        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('subscribe')
+          return Promise.resolve(true)
+        },
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('unsubscribe')
+          return Promise.resolve(true)
+        },
+        async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
+          const channelId = await channel.idBase64()
+          expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
+          ops.push('handle')
+          n.handle(await receiver.idBase64(), message)
+          return Promise.resolve([])
+        }
+      }
+      const n = new Notifications({ transport })
+      const { promise } = n.receive(receiver, (input: any): input is string => input === 'ho')
+      await n.send(sender, 'hi')
+      await n.send(sender, 'ho')
+      const result = await promise
+      expect(result).toBe('ho')
+      expect(n.processors.size).toBe(0)
+      expect(ops).toEqual(['subscribe', 'handle', 'handle', 'unsubscribe'])
+    })
+
+    it('cancelling the receiving of a message', async () => {
+      const sender = Sender.create()
+      const receiver = sender.newReceiver()
+      const ops = [] as string[]
+      const transport: INotificationsTransport = {
+        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('subscribe')
+          return Promise.resolve(true)
+        },
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('unsubscribe')
+          return Promise.resolve(true)
+        },
+        async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
+          const channelId = await channel.idBase64()
+          expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
+          ops.push('handle')
+          n.handle(await receiver.idBase64(), message)
+          return Promise.resolve([])
+        }
+      }
+      const n = new Notifications({ transport })
+      const { promise, cancel } = n.receive(receiver, (input: any): input is string => input === 'ho')
+      await cancel()
+      try {
+        await promise
+        fail(new Error('unexpected pass'))
+      } catch (err) {
+        expect(err.message).toBe('cancelled')
+      }
+      expect(n.processors.size).toBe(0)
+      expect(ops).toEqual(['subscribe', 'unsubscribe'])
+    })
+
+    it('sending and receiving a message', async () => {
+      const sender = Sender.create()
+      const sender2 = Sender.create()
+      const receiver = sender2.newReceiver()
+      const ops = [] as string[]
+      const transport: INotificationsTransport = {
+        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('subscribe')
+          return Promise.resolve(true)
+        },
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('unsubscribe')
+          return Promise.resolve(true)
+        },
+        async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
+          const channelId = await channel.idBase64()
+          if (channelId === await sender.newAnnonymous().idBase64()) {
+            expect(await sender.decrypt(message)).toEqual({ body: 'ping' })
+            ops.push('ping-received')
+            await n.send(sender2, 'pong')
+            return
+          }
+          expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
+          ops.push('handle')
+          n.handle(await receiver.idBase64(), message)
+          return Promise.resolve([])
+        }
+      }
+      const n = new Notifications({ transport })
+      const { promise } = n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
+      const result = await promise
+      expect(result).toBe('pong')
+      expect(n.processors.size).toBe(0)
+      expect(ops).toEqual(['subscribe', 'ping-received', 'handle', 'unsubscribe'])
+    })
+
+    it('cancelling the sending and receiving a message', async () => {
+      const sender = Sender.create()
+      const sender2 = Sender.create()
+      const receiver = sender2.newReceiver()
+      const ops = [] as string[]
+      const transport: INotificationsTransport = {
+        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('subscribe')
+          return Promise.resolve(true)
+        },
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+          expect(receivers).toEqual([receiver])
+          ops.push('unsubscribe')
+          return Promise.resolve(true)
+        },
+        async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
+          const channelId = await channel.idBase64()
+          if (channelId === await sender.newAnnonymous().idBase64()) {
+            expect(await sender.decrypt(message)).toEqual({ body: 'ping' })
+            ops.push('ping-received')
+            await cancel()
+            await n.send(sender2, 'pong')
+            return
+          }
+          expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
+          ops.push('handle')
+          n.handle(await receiver.idBase64(), message)
+          return Promise.resolve([])
+        }
+      }
+      const n = new Notifications({ transport })
+      const { promise, cancel } = n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
+      try {
+        await promise
+      } catch (err) {
+        expect(err.message).toBe('cancelled')
+      }
+      expect(n.processors.size).toBe(0)
+      expect(ops).toEqual(['subscribe', 'ping-received', 'unsubscribe', 'handle'])
     })
   })
 })
