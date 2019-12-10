@@ -1,7 +1,8 @@
 import { setup, IAnnonymous, IReceiver, IEncryptedMessage } from '@consento/crypto'
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { cores } from '@consento/crypto/core/cores'
-import { Notifications } from '../index'
+import { Notifications, isError, isSuccess } from '../index'
+import { INotification } from '../types'
 
 const transportStub = {
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -10,6 +11,20 @@ const transportStub = {
   async unsubscribe (_: IReceiver[]): Promise<boolean> { return false },
   // eslint-disable-next-line @typescript-eslint/require-await
   async send (_: IAnnonymous, __: IEncryptedMessage): Promise<any[]> { return [] }
+}
+
+async function wait (time: number, op: (cb: () => void) => any): Promise<void> {
+  let _reject: (error: Error) => void
+  let _resolve: () => void
+  const timeout = setTimeout(() => _reject(new Error(`Timeout ${time}`)), time)
+  op(() => {
+    _resolve()
+    clearTimeout(timeout)
+  })
+  return new Promise <void>((resolve, reject) => {
+    _resolve = resolve
+    _reject = reject
+  })
 }
 
 cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
@@ -33,7 +48,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           }
         }
       })
-      n.on('error', fail)
+      n.processors.add((message: INotification) => { if (isError(message)) fail(message) })
       expect(await n.send(sender, 'Hello World')).toEqual([
         rnd.toString()
       ])
@@ -51,12 +66,15 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       }
       const sent = 'Hello World'
       const n = new Notifications({ transport })
-      n.on('error', fail)
-      n.addListener('message', (receivedReceiver: IReceiver, message: string) => {
-        (async () => {
-          expect(await receiver.equals(receivedReceiver)).toBe(true)
-          expect(message).toBe(sent)
-        })().catch(fail)
+      n.processors.add((message: INotification) => {
+        if (isSuccess(message)) {
+          (async () => {
+            expect((await receiver.idBase64())).toBe(message.receiverIdBase64)
+            expect(message.body).toBe(sent)
+          })().catch(fail)
+        } else {
+          fail(message)
+        }
       })
       const receiver = sender.newReceiver()
       await n.subscribe([receiver])
@@ -67,20 +85,21 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender = Sender.create()
       const idBase64 = await sender.idBase64()
       const n = new Notifications({ transport: transportStub })
-      n.on('error', error => {
-        expect(error).toEqual({
-          error: 'unexpected-receiver',
-          receiverIdBase64: idBase64
+      const msg = await sender.encrypt('Hello World')
+      await wait(10, cb => {
+        n.processors.add((message: INotification) => {
+          if (isError(message)) {
+            expect(message).toEqual({
+              type: 'error',
+              code: 'unexpected-receiver',
+              receiverIdBase64: idBase64
+            })
+            cb()
+          } else {
+            fail(message)
+          }
         })
-      })
-      n.handle(idBase64, await sender.encrypt('Hello'))
-      await new Promise(resolve => {
-        n.on('message', (receiver: IReceiver, message) => {
-          (async () => {
-            throw new Error(`Unexpected message ${await receiver.idBase64()} => ${message}`)
-          })().catch(fail)
-        })
-        setTimeout(resolve, 10)
+        n.handle(idBase64, msg)
       })
     })
 
@@ -102,11 +121,16 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }
       const n = new Notifications({ transport })
-      n.on('error', (error) => {
-        expect(error).toEqual({
-          error: 'unexpected-receiver',
-          receiverIdBase64: idBase64
-        })
+      n.processors.add((message: INotification) => {
+        if (isError(message)) {
+          expect(message).toEqual({
+            type: 'error',
+            code: 'unexpected-receiver',
+            receiverIdBase64: idBase64
+          })
+        } else {
+          fail(message)
+        }
       })
       await n.subscribe([receiver])
       await n.unsubscribe([receiver])

@@ -50,8 +50,20 @@ notifications.subscribe(sender.newReceiver())
 All messages are received through a single handler:
 
 ```typescript
-notifications.on('message', (receiver: IReceiver, message) => {
+import { isSuccessNotification, isErrorNotification } from '@consento/api'
+
+notifications.processor.add((message) => {
   // Handle the message result.
+  if (isSuccessNotification(message)) {
+    message.body // body of the message
+    message.receiver // receiver for the message
+    message.receiverIdBase64 // base64 for the receiver
+  }
+  if (isErrorNotification(message)) {
+    message.code // code for the error
+    message.error // error object (if available)
+    message.receiverIdBase64 // id for the receiver
+  }
 })
 ```
 

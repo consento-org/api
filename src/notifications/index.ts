@@ -1,39 +1,92 @@
 import { ISender, IReceiver, IEncodable, IEncryptedMessage } from '@consento/crypto'
-import { INotifications, INotificationsTransport, INotificationsOptions } from './types'
-import { EventEmitter } from 'events'
+import { INotifications, INotificationsTransport, INotificationsOptions, INotificationProcessor, INotification, ISuccessNotification, INotificationError } from './types'
 
-export class Notifications<MessageFormat extends IEncodable = IEncodable> extends EventEmitter implements INotifications {
+export function isSuccess (input: INotification): input is ISuccessNotification {
+  return input.type === 'success'
+}
+
+export function isError (input: INotification): input is INotificationError {
+  return input.type === 'error'
+}
+
+async function final <T> (promise: Promise<T>, beforeReturn: () => PromiseLike<void> | void): Promise<T> {
+  return promise.then(
+    async (data: T) => {
+      await beforeReturn()
+      return data
+    },
+    async (error) => {
+      await beforeReturn()
+      throw error
+    })
+}
+
+export class Notifications implements INotifications {
   _transport: INotificationsTransport
   _receivers: { [receiverIdBase64: string]: IReceiver }
+
+  processors: Set<INotificationProcessor>
 
   handle: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void
 
   constructor ({ transport }: INotificationsOptions) {
-    super()
     this._transport = transport
     this._receivers = {}
+    this.processors = new Set()
+
+    const getMessage = async (receiverIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<INotification> => {
+      const receiver = this._receivers[receiverIdBase64]
+      if (receiver === undefined) {
+        return {
+          type: 'error',
+          code: 'unexpected-receiver',
+          receiverIdBase64
+        }
+      }
+      const decryption = await receiver.decrypt(encryptedMessage)
+      if (decryption.error !== undefined) {
+        return {
+          type: 'error',
+          code: decryption.error,
+          receiverIdBase64
+        }
+      }
+      return {
+        type: 'success',
+        body: decryption.body,
+        receiver,
+        receiverIdBase64
+      }
+    }
     this.handle = (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => {
       (async () => {
-        const receiver = this._receivers[receiverIdBase64]
-        if (receiver === undefined) {
-          return this.emit('error', {
-            error: 'unexpected-receiver',
-            receiverIdBase64
-          })
-        }
-        const result = await receiver.decrypt(encryptedMessage)
-        if ('error' in result) {
-          return this.emit('error', result)
-        }
+        const iter = this.processors.values()
+        let message: INotification
         try {
-          this.emit('message', receiver, result.body)
-        } catch (err) {
-          this.emit('error', {
-            error: 'handler-error',
-            stack: err.stack
-          })
+          message = await getMessage(receiverIdBase64, encryptedMessage)
+        } catch (error) {
+          message = {
+            type: 'error',
+            code: 'decryption-failed',
+            error,
+            receiverIdBase64
+          }
         }
-      })().catch(error => this.emit('error', error))
+
+        do {
+          const { done, value } = iter.next()
+          if (done) {
+            return
+          }
+          try {
+            value(message)
+          } catch (err) {
+            setTimeout(() => {
+              console.error(err)
+            })
+          }
+        } while (true)
+      })().catch(error => console.log(error))
     }
   }
 
@@ -74,7 +127,7 @@ export class Notifications<MessageFormat extends IEncodable = IEncodable> extend
     return true
   }
 
-  async send (sender: ISender, message: MessageFormat): Promise<string[]> {
+  async send (sender: ISender, message: IEncodable): Promise<string[]> {
     return this._transport.send(sender, await sender.encrypt(message))
   }
 }
