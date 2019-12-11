@@ -1,11 +1,11 @@
 {
   "name": "@consento/api",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "JavasScript API for building things with consento.",
   "main": "index.js",
   "private": true,
   "scripts": {
-    "ci": "npm run lint && npm run test",
+    "ci": "npm run lint && npm run test -- --no-watchman",
     "test": "jest",
     "build-ts": "tsc",
     "watch-ts": "tsc -w",
