@@ -131,10 +131,10 @@ export class Notifications implements INotifications {
     return this._transport.send(sender, await sender.encrypt(message))
   }
 
-  receive <T extends IEncodable> (receiver: IReceiver, filter?: IBodyFilter<T>, timeout?: number): IReceive<T> {
+  async receive <T extends IEncodable> (receiver: IReceiver, filter?: IBodyFilter<T>, timeout?: number): Promise<IReceive<T>> {
     let _resolve: (t: T) => any
     let _reject: (error: Error) => void
-    let timer: number
+    let timer: any
     const promise = final(new Promise<T>((resolve, reject) => {
       _resolve = resolve
       _reject = reject
@@ -160,8 +160,9 @@ export class Notifications implements INotifications {
     }
     const subscription = this.subscribe([receiver])
     this.processors.add(processor)
+    await subscription
     return {
-      promise: subscription.then(async () => promise),
+      promise,
       cancel: async (): Promise<void> => {
         _reject(new Error('cancelled'))
         try {
@@ -171,8 +172,8 @@ export class Notifications implements INotifications {
     }
   }
 
-  sendAndReceive <T extends IEncodable = IEncodable> (connection: IConnection, message: IEncodable, filter?: IBodyFilter<T>, timeout?: number): IReceive<T> {
-    const { promise, cancel } = this.receive(connection.receiver, filter, timeout)
+  async sendAndReceive <T extends IEncodable = IEncodable> (connection: IConnection, message: IEncodable, filter?: IBodyFilter<T>, timeout?: number): Promise<IReceive<T>> {
+    const { promise, cancel } = await this.receive(connection.receiver, filter, timeout)
     return {
       promise: this.send(connection.sender, message).then(async () => promise),
       cancel

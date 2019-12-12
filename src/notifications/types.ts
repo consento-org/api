@@ -44,8 +44,8 @@ export interface INotifications {
   unsubscribe (receivers: IReceiver[], force?: boolean): Promise<boolean>
   processors: Set<INotificationProcessor>
   send (sender: ISender, message: IEncodable): Promise<string[]>
-  receive (receiver: IReceiver): IReceive
-  receive <T extends IEncodable>(receiver: IReceiver, filter: IBodyFilter<T>): IReceive<T>
-  sendAndReceive (connection: IConnection, message: IEncodable): IReceive
-  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, filter: IBodyFilter<T>): IReceive<T>
+  receive (receiver: IReceiver): Promise<IReceive>
+  receive <T extends IEncodable>(receiver: IReceiver, filter: IBodyFilter<T>): Promise<IReceive<T>>
+  sendAndReceive (connection: IConnection, message: IEncodable): Promise<IReceive>
+  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, filter: IBodyFilter<T>): Promise<IReceive<T>>
 }

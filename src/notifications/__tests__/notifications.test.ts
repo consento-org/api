@@ -161,7 +161,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }
       const n = new Notifications({ transport })
-      const { promise } = n.receive(receiver, (input: any): input is string => input === 'ho')
+      const { promise } = await n.receive(receiver, (input: any): input is string => input === 'ho')
       await n.send(sender, 'hi')
       await n.send(sender, 'ho')
       const result = await promise
@@ -194,7 +194,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }
       const n = new Notifications({ transport })
-      const { promise, cancel } = n.receive(receiver, (input: any): input is string => input === 'ho')
+      const { promise, cancel } = await n.receive(receiver, (input: any): input is string => input === 'ho')
       await cancel()
       try {
         await promise
@@ -237,7 +237,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }
       const n = new Notifications({ transport })
-      const { promise } = n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
+      const { promise } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
       const result = await promise
       expect(result).toBe('pong')
       expect(n.processors.size).toBe(0)
@@ -276,7 +276,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }
       const n = new Notifications({ transport })
-      const { promise, cancel } = n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
+      const { promise, cancel } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
       try {
         await promise
       } catch (err) {
