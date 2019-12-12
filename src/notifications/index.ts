@@ -172,6 +172,7 @@ export class Notifications implements INotifications {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async sendAndReceive <T extends IEncodable = IEncodable> (connection: IConnection, message: IEncodable, filter?: IBodyFilter<T>, timeout?: number): Promise<IReceive<T>> {
     const { promise, cancel } = await this.receive(connection.receiver, filter, timeout)
     return {
