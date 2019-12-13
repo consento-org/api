@@ -3,6 +3,7 @@ import { ICryptoCore } from '@consento/crypto/core/types'
 import { cores } from '@consento/crypto/core/cores'
 import { Notifications, isError, isSuccess } from '../index'
 import { INotificationsTransport, INotification } from '../types'
+import { EventEmitter } from 'events'
 
 const transportStub = {
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -36,7 +37,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const message = 'Hello World'
       const rnd = Math.random()
       const n = new Notifications({
-        transport: {
+        transport: Object.assign(new EventEmitter(), {
           ...transportStub,
           async send (receivedChannel: IAnnonymous, encrypted: any): Promise<any[]> {
             expect(await receivedChannel.equals(sender)).toBe(true)
@@ -46,7 +47,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
               })
             return [rnd.toString()]
           }
-        }
+        }) as INotificationsTransport
       })
       n.processors.add((message: INotification) => { if (isError(message)) fail(message) })
       expect(await n.send(sender, 'Hello World')).toEqual([
@@ -57,15 +58,15 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
     it('processing okay', async () => {
       const sender = Sender.create()
       const idBase64 = await sender.idBase64()
-      const transport = {
+      const transport = Object.assign(new EventEmitter(), {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/promise-function-async
         async subscribe (_: IReceiver[]): Promise<boolean> {
           return Promise.resolve(true)
         }
-      }
+      })
       const sent = 'Hello World'
-      const n = new Notifications({ transport })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
       n.processors.add((message: INotification) => {
         if (isSuccess(message)) {
           (async () => {
@@ -78,13 +79,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
       const receiver = sender.newReceiver()
       await n.subscribe([receiver])
-      n.handle(idBase64, await sender.encrypt(sent))
+      transport.emit('message', idBase64, await sender.encrypt(sent))
     })
 
     it('ingoring never-subscribed notifications', async () => {
       const sender = Sender.create()
       const idBase64 = await sender.idBase64()
-      const n = new Notifications({ transport: transportStub })
+      const transport = Object.assign(new EventEmitter(), transportStub)
+      const n = new Notifications({ transport: transport as INotificationsTransport })
       const msg = await sender.encrypt('Hello World')
       await wait(10, cb => {
         n.processors.add((message: INotification) => {
@@ -99,7 +101,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
             fail(message)
           }
         })
-        n.handle(idBase64, msg)
+        transport.emit('message', idBase64, msg)
       })
     })
 
@@ -108,7 +110,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const idBase64 = await sender.idBase64()
       const sent = 'Hello World'
       const receiver = sender.newReceiver()
-      const transport = {
+      const transport = Object.assign(new EventEmitter(), {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (_: IReceiver[]): Promise<boolean> {
@@ -119,8 +121,8 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           expect(receivers).toEqual([receiver])
           return true
         }
-      }
-      const n = new Notifications({ transport })
+      })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
       n.processors.add((message: INotification) => {
         if (isError(message)) {
           expect(message).toEqual({
@@ -134,14 +136,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
       await n.subscribe([receiver])
       await n.unsubscribe([receiver])
-      n.handle(idBase64, await sender.encrypt(sent))
+      transport.emit('message', idBase64, await sender.encrypt(sent))
     })
 
     it('receiving a certain message', async () => {
       const sender = Sender.create()
       const receiver = sender.newReceiver()
       const ops = [] as string[]
-      const transport: INotificationsTransport = {
+      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
         async subscribe (receivers: IReceiver[]): Promise<boolean> {
           expect(receivers).toEqual([receiver])
           ops.push('subscribe')
@@ -156,10 +158,10 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           const channelId = await channel.idBase64()
           expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
           ops.push('handle')
-          n.handle(await receiver.idBase64(), message)
+          this.emit('message', await receiver.idBase64(), message)
           return Promise.resolve([])
         }
-      }
+      }) as INotificationsTransport
       const n = new Notifications({ transport })
       const { promise } = await n.receive(receiver, (input: any): input is string => input === 'ho')
       await n.send(sender, 'hi')
@@ -174,7 +176,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender = Sender.create()
       const receiver = sender.newReceiver()
       const ops = [] as string[]
-      const transport: INotificationsTransport = {
+      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
         async subscribe (receivers: IReceiver[]): Promise<boolean> {
           expect(receivers).toEqual([receiver])
           ops.push('subscribe')
@@ -189,10 +191,10 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           const channelId = await channel.idBase64()
           expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
           ops.push('handle')
-          n.handle(await receiver.idBase64(), message)
+          this.emit('message', await receiver.idBase64(), message)
           return Promise.resolve([])
         }
-      }
+      }) as INotificationsTransport
       const n = new Notifications({ transport })
       const { promise, cancel } = await n.receive(receiver, (input: any): input is string => input === 'ho')
       await cancel()
@@ -211,7 +213,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender2 = Sender.create()
       const receiver = sender2.newReceiver()
       const ops = [] as string[]
-      const transport: INotificationsTransport = {
+      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
         async subscribe (receivers: IReceiver[]): Promise<boolean> {
           expect(receivers).toEqual([receiver])
           ops.push('subscribe')
@@ -232,10 +234,10 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           }
           expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
           ops.push('handle')
-          n.handle(await receiver.idBase64(), message)
+          this.emit('message', await receiver.idBase64(), message)
           return Promise.resolve([])
         }
-      }
+      }) as INotificationsTransport
       const n = new Notifications({ transport })
       const { promise } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
       const result = await promise
@@ -249,7 +251,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender2 = Sender.create()
       const receiver = sender2.newReceiver()
       const ops = [] as string[]
-      const transport: INotificationsTransport = {
+      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
         async subscribe (receivers: IReceiver[]): Promise<boolean> {
           expect(receivers).toEqual([receiver])
           ops.push('subscribe')
@@ -271,10 +273,10 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           }
           expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
           ops.push('handle')
-          n.handle(await receiver.idBase64(), message)
+          this.emit('message', await receiver.idBase64(), message)
           return Promise.resolve([])
         }
-      }
+      }) as INotificationsTransport
       const n = new Notifications({ transport })
       const { promise, cancel } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
       try {

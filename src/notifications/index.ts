@@ -27,8 +27,6 @@ export class Notifications implements INotifications {
 
   processors: Set<INotificationProcessor>
 
-  handle: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void
-
   constructor ({ transport }: INotificationsOptions) {
     this._transport = transport
     this._receivers = {}
@@ -58,9 +56,31 @@ export class Notifications implements INotifications {
         receiverIdBase64
       }
     }
-    this.handle = (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => {
+    const send = (message: INotification): void => {
+      const iter = this.processors.values()
+      do {
+        const { done, value } = iter.next()
+        if (done) {
+          return
+        }
+        try {
+          value(message)
+        } catch (err) {
+          setTimeout(() => {
+            console.error(err)
+          })
+        }
+      } while (true)
+    }
+    transport.on('error', (error: Error): void => {
+      send({
+        type: 'error',
+        code: 'transport-error',
+        error
+      })
+    })
+    transport.on('message', (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => {
       (async () => {
-        const iter = this.processors.values()
         let message: INotification
         try {
           message = await getMessage(receiverIdBase64, encryptedMessage)
@@ -72,22 +92,9 @@ export class Notifications implements INotifications {
             receiverIdBase64
           }
         }
-
-        do {
-          const { done, value } = iter.next()
-          if (done) {
-            return
-          }
-          try {
-            value(message)
-          } catch (err) {
-            setTimeout(() => {
-              console.error(err)
-            })
-          }
-        } while (true)
+        send(message)
       })().catch(error => console.log(error))
-    }
+    })
   }
 
   async subscribe (receivers: IReceiver[], force: boolean = false): Promise<boolean> {

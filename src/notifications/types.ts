@@ -4,6 +4,10 @@ export interface INotificationsTransport {
   subscribe (receivers: IReceiver[]): Promise<boolean>
   unsubscribe (receivers: IReceiver[]): Promise<boolean>
   send(channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
+  on (event: 'error', handler: (error: Error) => void): this
+  on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
+  removeListener (event: 'error', handler: (error: Error) => void): this
+  removeListener (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
 }
 
 export interface INotificationsOptions {
@@ -14,7 +18,7 @@ export interface INotificationError {
   type: 'error'
   error?: Error
   code?: string
-  receiverIdBase64: string
+  receiverIdBase64?: string
 }
 
 export interface ISuccessNotification<T extends IEncodable = IEncodable> {
@@ -39,7 +43,6 @@ export interface IReceive<T extends IEncodable = IEncodable> {
 }
 
 export interface INotifications {
-  handle: (receiverBase64: string, message: IEncryptedMessage) => void
   subscribe (receivers: IReceiver[], force?: boolean): Promise<boolean>
   unsubscribe (receivers: IReceiver[], force?: boolean): Promise<boolean>
   processors: Set<INotificationProcessor>
