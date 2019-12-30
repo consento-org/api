@@ -1,11 +1,9 @@
 import { IAPI, IAPIOptions } from './types'
 import { Notifications } from './notifications'
-import * as crypto from '@consento/crypto'
+import { setup as cryptoSetup } from '@consento/crypto'
 
-export { crypto }
-export * from '@consento/crypto/types'
-export * from './notifications/types'
 export * from './types'
+export * from '@consento/crypto/util/cancelable'
 export { isSuccess as isSuccessNotification, isError as isErrorNotification } from './notifications'
 
 export function setup ({ cryptoCore, notificationTransport }: IAPIOptions): IAPI {
@@ -13,6 +11,6 @@ export function setup ({ cryptoCore, notificationTransport }: IAPIOptions): IAPI
     notifications: new Notifications({
       transport: notificationTransport
     }),
-    crypto: crypto.setup(cryptoCore)
+    crypto: cryptoSetup(cryptoCore)
   }
 }

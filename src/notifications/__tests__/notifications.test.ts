@@ -1,4 +1,4 @@
-import { setup, IAnnonymous, IReceiver, IEncryptedMessage } from '@consento/crypto'
+import { setup, IAnnonymous, IReceiver, IEncryptedMessage, CancelError } from '@consento/crypto'
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { cores } from '@consento/crypto/core/cores'
 import { Notifications, isError, isSuccess } from '../index'
@@ -7,11 +7,11 @@ import { EventEmitter } from 'events'
 
 const transportStub = {
   // eslint-disable-next-line @typescript-eslint/require-await
-  async subscribe (_: IReceiver[]): Promise<boolean> { return false },
+  async subscribe (input: IReceiver[]): Promise<boolean[]> { return input.map(_ => false) },
   // eslint-disable-next-line @typescript-eslint/require-await
-  async unsubscribe (_: IReceiver[]): Promise<boolean> { return false },
+  async unsubscribe (input: IReceiver[]): Promise<boolean[]> { return input.map(_ => false) },
   // eslint-disable-next-line @typescript-eslint/require-await
-  async send (_: IAnnonymous, __: IEncryptedMessage): Promise<any[]> { return [] }
+  async send (_: IAnnonymous, __: IEncryptedMessage): Promise<any[]> { return [] },
 }
 
 async function wait (time: number, op: (cb: () => void) => any): Promise<void> {
@@ -28,6 +28,16 @@ async function wait (time: number, op: (cb: () => void) => any): Promise<void> {
   })
 }
 
+async function isChannel (receiver: IReceiver, target: IAnnonymous): Promise<boolean> {
+  return (await target.idBase64()) === (await receiver.newAnnonymous().idBase64())
+}
+
+function mapIsChannel (receiver: IReceiver) {
+  return async (target: IAnnonymous): Promise<boolean> => {
+    return isChannel(receiver, target)
+  }
+}
+
 cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
   const { Sender } = setup(crypto)
   describe(`${name} - Notification Cryptography`, () => {
@@ -40,7 +50,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         transport: Object.assign(new EventEmitter(), {
           ...transportStub,
           async send (receivedChannel: IAnnonymous, encrypted: any): Promise<any[]> {
-            expect(await receivedChannel.equals(sender)).toBe(true)
+            expect(await receivedChannel.equals(sender.newAnnonymous())).toBe(true)
             expect(await receiver.decrypt(encrypted))
               .toEqual({
                 body: message
@@ -60,9 +70,9 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const idBase64 = await sender.idBase64()
       const transport = Object.assign(new EventEmitter(), {
         ...transportStub,
-        // eslint-disable-next-line @typescript-eslint/promise-function-async
-        async subscribe (_: IReceiver[]): Promise<boolean> {
-          return Promise.resolve(true)
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (input: IReceiver[]): Promise<boolean[]> {
+          return input.map(_ => true)
         }
       })
       const sent = 'Hello World'
@@ -78,8 +88,41 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       })
       const receiver = sender.newReceiver()
-      await n.subscribe([receiver])
+      expect(await n.subscribe([receiver])).toEqual([true])
       transport.emit('message', idBase64, await sender.encrypt(sent))
+    })
+
+    it('will not subscribe if the subscription didnt work', async () => {
+      const senderA = Sender.create()
+      const receiverA = senderA.newReceiver()
+      const senderB = Sender.create()
+      const receiverB = senderA.newReceiver()
+      const aTicket = `ATicket${Math.random().toString(32)}`
+      const bTicket = `BTicket${Math.random().toString(32)}`
+      const transport = Object.assign(new EventEmitter(), {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
+          return receivers.map(receiver => {
+            return receiver === receiverA
+          })
+        },
+        async send (channel: IAnnonymous, encrypted: any): Promise<any[]> {
+          transport.emit('message', await channel.idBase64(), encrypted)
+          return [await channel.equals(receiverA.newAnnonymous()) ? aTicket : bTicket]
+        }
+      })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
+      expect(await n.subscribe([receiverA, receiverB])).toEqual([true, false])
+      const receiveA = (await n.receive(receiverA)).afterSubscribe
+      try {
+        await (await n.receive(receiverB, null, 100)).afterSubscribe
+      } catch (error) {
+        expect(error.code).toBe('timeout')
+      }
+      expect(await n.send(senderA, 'hello world')).toEqual([aTicket])
+      expect(await n.send(senderB, 'hallo welt')).toEqual([bTicket])
+      expect(await receiveA).toBe('hello world')
     })
 
     it('ingoring never-subscribed notifications', async () => {
@@ -113,13 +156,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const transport = Object.assign(new EventEmitter(), {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
-        async subscribe (_: IReceiver[]): Promise<boolean> {
-          return true
+        async subscribe (_: IReceiver[]): Promise<boolean[]> {
+          return [true]
         },
         // eslint-disable-next-line @typescript-eslint/require-await
-        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          return true
+          return [true]
         }
       })
       const n = new Notifications({ transport: transport as INotificationsTransport })
@@ -143,30 +186,39 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender = Sender.create()
       const receiver = sender.newReceiver()
       const ops = [] as string[]
+      const next = (op: string): void => {
+        ops.push(op)
+      }
       const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
-        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          ops.push('subscribe')
-          return Promise.resolve(true)
+          next('subscribe')
+          return [true]
         },
-        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          ops.push('unsubscribe')
-          return Promise.resolve(true)
+          next('unsubscribe')
+          return [true]
         },
         async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
           const channelId = await channel.idBase64()
           expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
-          ops.push('handle')
+          next('handle')
           this.emit('message', await receiver.idBase64(), message)
-          return Promise.resolve([])
+          return []
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      const { promise } = await n.receive(receiver, (input: any): input is string => input === 'ho')
+      // @ts-ignore TS2339
+      const { afterSubscribe } = await n.receive(receiver, (input: any): input is string => {
+        return input === 'ho'
+      })
       await n.send(sender, 'hi')
       await n.send(sender, 'ho')
-      const result = await promise
+      const result = await afterSubscribe
       expect(result).toBe('ho')
       expect(n.processors.size).toBe(0)
       expect(ops).toEqual(['subscribe', 'handle', 'handle', 'unsubscribe'])
@@ -177,30 +229,34 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const receiver = sender.newReceiver()
       const ops = [] as string[]
       const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
-        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
           ops.push('subscribe')
-          return Promise.resolve(true)
+          return [true]
         },
-        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
           ops.push('unsubscribe')
-          return Promise.resolve(true)
+          return [true]
         },
         async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
           const channelId = await channel.idBase64()
           expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
           ops.push('handle')
           this.emit('message', await receiver.idBase64(), message)
-          return Promise.resolve([])
+          return ['abcd', 'efgh']
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      const { promise, cancel } = await n.receive(receiver, (input: any): input is string => input === 'ho')
-      await cancel()
+      // @ts-ignore TS2339
+      const { afterSubscribe } = await n.receive(receiver, (input: any): input is string => input === 'ho')
       try {
-        await promise
-        fail(new Error('unexpected pass'))
+        // eslint-disable-next-line @typescript-eslint/promise-function-async
+        await afterSubscribe.cancel().then(() => afterSubscribe)
+        fail('no error?')
       } catch (err) {
         expect(err.message).toBe('cancelled')
       }
@@ -208,42 +264,56 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       expect(ops).toEqual(['subscribe', 'unsubscribe'])
     })
 
-    it('sending and receiving a message', async () => {
+    it('only sending and receiving a message', async () => {
       const sender = Sender.create()
       const sender2 = Sender.create()
       const receiver = sender2.newReceiver()
       const ops = [] as string[]
+
+      const next = (str: string): void => {
+        ops.push(str)
+      }
+      const decryptMessageAndSendPong = async (message: IEncryptedMessage): Promise<void> => {
+        expect(await sender.decrypt(message)).toEqual({ body: 'ping' })
+        next('ping-received-sending-pong')
+        await n.send(sender2, 'pong')
+      }
+      const isSenderChannel = mapIsChannel(sender)
+      const isReceiverChannel = mapIsChannel(receiver)
       const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
-        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          ops.push('subscribe')
-          return Promise.resolve(true)
+          next('received-subscription')
+          return [true]
         },
-        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          ops.push('unsubscribe')
-          return Promise.resolve(true)
+          next('received-unsubscription')
+          return [true]
         },
         async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
-          const channelId = await channel.idBase64()
-          if (channelId === await sender.newAnnonymous().idBase64()) {
-            expect(await sender.decrypt(message)).toEqual({ body: 'ping' })
-            ops.push('ping-received')
-            await n.send(sender2, 'pong')
-            return
+          if (await isSenderChannel(channel)) {
+            await decryptMessageAndSendPong(message)
+          } else if (await isReceiverChannel(channel)) {
+            next('handover-encrypted-message')
+            expect(await sender2.decrypt(message)).toEqual({ body: 'pong' })
+            this.emit('message', await receiver.idBase64(), message)
+          } else {
+            fail('Unexpected channel')
           }
-          expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
-          ops.push('handle')
-          this.emit('message', await receiver.idBase64(), message)
-          return Promise.resolve([])
+          return []
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      const { promise } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
-      const result = await promise
+      // @ts-ignore TS2339
+      const { afterSubscribe } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
+      const result = await afterSubscribe
       expect(result).toBe('pong')
       expect(n.processors.size).toBe(0)
-      expect(ops).toEqual(['subscribe', 'ping-received', 'handle', 'unsubscribe'])
+      expect(ops).toEqual(['received-subscription', 'ping-received-sending-pong', 'handover-encrypted-message', 'received-unsubscription'])
     })
 
     it('cancelling the sending and receiving a message', async () => {
@@ -251,41 +321,59 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender2 = Sender.create()
       const receiver = sender2.newReceiver()
       const ops = [] as string[]
+
+      const next = (op: string): void => {
+        // console.log(op)
+        ops.push(op)
+      }
+
+      const isSenderChannel = mapIsChannel(sender)
+      const isReceiverChannel = mapIsChannel(receiver)
       const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
-        async subscribe (receivers: IReceiver[]): Promise<boolean> {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          ops.push('subscribe')
-          return Promise.resolve(true)
+          next('received-subscription')
+          return [true]
         },
-        async unsubscribe (receivers: IReceiver[]): Promise<boolean> {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async unsubscribe (receivers: IReceiver[]): Promise<boolean[]> {
           expect(receivers).toEqual([receiver])
-          ops.push('unsubscribe')
-          return Promise.resolve(true)
+          next('received-unsubscription')
+          return [true]
         },
         async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
           const channelId = await channel.idBase64()
-          if (channelId === await sender.newAnnonymous().idBase64()) {
+          if (await isSenderChannel(channel)) {
             expect(await sender.decrypt(message)).toEqual({ body: 'ping' })
-            ops.push('ping-received')
-            await cancel()
-            await n.send(sender2, 'pong')
-            return
+            next('ping-received-sending-pong')
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
+            await afterSubscribe.cancel()
+            // Cancelling the subscription should finish the test, don't log after this point
+            n.send(sender2, 'pong').catch(fail)
+          } else if (await isReceiverChannel(channel)) {
+            next('handover-encrypted-message')
+            expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
+            this.emit('message', await receiver.idBase64(), message)
+          } else {
+            fail('unexpected channel')
           }
-          expect(channelId).toBe(await receiver.newAnnonymous().idBase64())
-          ops.push('handle')
-          this.emit('message', await receiver.idBase64(), message)
-          return Promise.resolve([])
+          return []
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      const { promise, cancel } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
+      // @ts-ignore TS2339
+      const { afterSubscribe } = await n.sendAndReceive({ sender, receiver }, 'ping', (input: any): input is string => input === 'pong')
       try {
-        await promise
+        await afterSubscribe
+        fail('no error?')
       } catch (err) {
-        expect(err.message).toBe('cancelled')
+        expect(err).toBeInstanceOf(CancelError)
       }
+      expect(afterSubscribe.cancelled).toBe(true)
       expect(n.processors.size).toBe(0)
-      expect(ops).toEqual(['subscribe', 'ping-received', 'unsubscribe', 'handle'])
+      expect(ops).toEqual(['received-subscription', 'ping-received-sending-pong', 'received-unsubscription'])
     })
   })
 })

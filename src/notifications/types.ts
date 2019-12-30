@@ -1,9 +1,9 @@
-import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage } from '@consento/crypto'
+import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage, ICancelable } from '@consento/crypto'
 
 export interface INotificationsTransport {
-  subscribe (receivers: IReceiver[]): Promise<boolean>
-  unsubscribe (receivers: IReceiver[]): Promise<boolean>
-  send(channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
+  subscribe (receivers: IReceiver[]): Promise<boolean[]>
+  unsubscribe (receivers: IReceiver[]): Promise<boolean[]>
+  send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
   on (event: 'error', handler: (error: Error) => void): this
   on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
   removeListener (event: 'error', handler: (error: Error) => void): this
@@ -37,18 +37,13 @@ export interface IConnection {
   receiver: IReceiver
 }
 
-export interface IReceive<T extends IEncodable = IEncodable> {
-  promise: Promise<T>
-  cancel: () => Promise<void>
-}
-
 export interface INotifications {
-  subscribe (receivers: IReceiver[], force?: boolean): Promise<boolean>
-  unsubscribe (receivers: IReceiver[], force?: boolean): Promise<boolean>
+  subscribe (receivers: IReceiver[], force?: boolean): ICancelable<boolean[]>
+  unsubscribe (receivers: IReceiver[], force?: boolean): ICancelable<boolean[]>
   processors: Set<INotificationProcessor>
   send (sender: ISender, message: IEncodable): Promise<string[]>
-  receive (receiver: IReceiver): Promise<IReceive>
-  receive <T extends IEncodable>(receiver: IReceiver, filter: IBodyFilter<T>): Promise<IReceive<T>>
-  sendAndReceive (connection: IConnection, message: IEncodable): Promise<IReceive>
-  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, filter: IBodyFilter<T>): Promise<IReceive<T>>
+  receive (receiver: IReceiver): ICancelable<{ afterSubscribe: ICancelable<IEncodable> }>
+  receive <T extends IEncodable>(receiver: IReceiver, filter: IBodyFilter<T>): ICancelable<{ afterSubscribe: ICancelable<T> }>
+  sendAndReceive (connection: IConnection, message: IEncodable): ICancelable<{ afterSubscribe: ICancelable<IEncodable> }>
+  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, filter: IBodyFilter<T>): ICancelable<{ afterSubscribe: ICancelable<T> }>
 }
