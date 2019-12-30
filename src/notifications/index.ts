@@ -166,7 +166,7 @@ export class Notifications implements INotifications {
       )
 
       return receivers.map(receiver => {
-        const changed = received.get(receiver)
+        const changed = received.get(receiver) || false
         if (changed) {
           this._receivers[idsBase64.get(receiver)] = receiver
         }
@@ -189,7 +189,7 @@ export class Notifications implements INotifications {
       )
 
       return receivers.map(receiver => {
-        const changed = received.get(receiver)
+        const changed = received.get(receiver) || false
         if (changed) {
           delete this._receivers[idsBase64.get(receiver)]
         }
