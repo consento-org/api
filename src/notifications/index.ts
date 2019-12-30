@@ -39,7 +39,13 @@ async function syncLookup <A, B> (list: Iterable<A>, op: (entry: A) => Promise<B
 }
 
 async function mapRequestList <Input, Output> (inputData: Input[], op: (inputData: Input[]) => Promise<Output[]>): Promise<Map<Input, Output>> {
+  if (!Array.isArray(inputData)) {
+    throw new Error('Expected input to be list')
+  }
   const outputData = await op(inputData)
+  if (!Array.isArray(outputData)) {
+    throw new Error(`Expected list response from ${op.toString()}`)
+  }
   const received = new Map <Input, Output>()
   for (let i = 0; i < inputData.length; i++) {
     const inputEntry = inputData[i]
