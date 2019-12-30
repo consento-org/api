@@ -12,6 +12,8 @@ const transportStub = {
   async unsubscribe (input: IReceiver[]): Promise<boolean[]> { return input.map(_ => false) },
   // eslint-disable-next-line @typescript-eslint/require-await
   async send (_: IAnnonymous, __: IEncryptedMessage): Promise<any[]> { return [] },
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async reset (input: IReceiver[]): Promise<boolean[]> { return input.map(_ => false) }
 }
 
 async function wait (time: number, op: (cb: () => void) => any): Promise<void> {
@@ -90,6 +92,47 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const receiver = sender.newReceiver()
       expect(await n.subscribe([receiver])).toEqual([true])
       transport.emit('message', idBase64, await sender.encrypt(sent))
+    })
+
+    it('a successful reset will clear all subscriptions', async () => {
+      const senderA = Sender.create()
+      const receiverA = senderA.newReceiver()
+      const senderB = Sender.create()
+      const receiverB = senderB.newReceiver()
+      const transport = Object.assign(new EventEmitter(), {
+        async send (channel: IAnnonymous, encrypted: any): Promise<any[]> {
+          transport.emit('message', await channel.idBase64(), encrypted)
+          return [Math.random().toString()]
+        },
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async subscribe (input: IReceiver[]): Promise<boolean[]> {
+          expect(input[0]).toBe(receiverA)
+          return input.map(_ => true)
+        },
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async unsubscribe (input: IReceiver[]): Promise<boolean[]> {
+          return input.map(_ => true)
+        },
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async reset (input: IReceiver[]): Promise<boolean[]> {
+          expect(input[0]).toBe(receiverB)
+          expect(input.length).toBe(1)
+          return input.map(_ => true)
+        }
+      })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
+      n.processors.add(notification => {
+        ;(async () => {
+          if (isSuccess(notification)) {
+            expect(await notification.receiver.equals(senderB.newReceiver())).toBe(true)
+            expect(notification.body).toBe('Holla')
+          }
+        })().catch(fail)
+      })
+      await n.subscribe([receiverA])
+      await n.reset([receiverB])
+      await n.send(senderA, 'Hello')
+      await n.send(senderB, 'Holla')
     })
 
     it('will not subscribe if the subscription didnt work', async () => {

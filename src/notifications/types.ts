@@ -3,6 +3,7 @@ import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage, ICancel
 export interface INotificationsTransport {
   subscribe (receivers: IReceiver[]): Promise<boolean[]>
   unsubscribe (receivers: IReceiver[]): Promise<boolean[]>
+  reset (receivers: IReceiver[]): Promise<boolean[]>
   send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
   on (event: 'error', handler: (error: Error) => void): this
   on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
@@ -40,6 +41,7 @@ export interface IConnection {
 export interface INotifications {
   subscribe (receivers: IReceiver[], force?: boolean): ICancelable<boolean[]>
   unsubscribe (receivers: IReceiver[], force?: boolean): ICancelable<boolean[]>
+  reset (receivers: IReceiver[]): ICancelable<boolean[]>
   processors: Set<INotificationProcessor>
   send (sender: ISender, message: IEncodable): Promise<string[]>
   receive (receiver: IReceiver): ICancelable<{ afterSubscribe: ICancelable<IEncodable> }>

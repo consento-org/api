@@ -126,6 +126,25 @@ export class Notifications implements INotifications {
   }
 
   // eslint-disable-next-line @typescript-eslint/promise-function-async
+  reset (receivers: IReceiver[]): ICancelable<boolean[]> {
+    return cancelable <boolean[], Notifications>(function * (child) {
+      const idsBase64: Map<IReceiver, string> = yield syncLookup(receivers, async receiver => receiver.idBase64())
+      const received: Map<IReceiver, boolean> = yield mapRequestList(
+        receivers,
+        async receivers => maybeChild(child, this._transport.reset(receivers))
+      )
+      this._receivers = {}
+      return receivers.map(receiver => {
+        const changed = received.get(receiver)
+        if (changed) {
+          this._receivers[idsBase64.get(receiver)] = receiver
+        }
+        return changed
+      })
+    }, this)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/promise-function-async
   subscribe (receivers: IReceiver[], force: boolean = false): ICancelable<boolean[]> {
     return cancelable <boolean[], Notifications>(function * (child) {
       if (receivers.length === 0) {
