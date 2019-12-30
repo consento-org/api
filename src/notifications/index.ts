@@ -17,11 +17,13 @@ async function untilTrue (op: () => boolean): Promise<void> {
   }
 }
 
+// TODO: move to @consento/crypto
 function isCancelable <T> (promise: Promise<T>): promise is ICancelable<T> {
   // @ts-ignore TS2339
   return typeof promise.cancel === 'function'
 }
 
+// TODO: move to @consento/crypto
 async function maybeChild <T> (child: <TChild>(cancelable: ICancelable<TChild>) => ICancelable<TChild>, promise: Promise<T>): Promise<T> {
   if (isCancelable(promise)) {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
