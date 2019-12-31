@@ -1,6 +1,6 @@
 {
   "name": "@consento/api",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "JavasScript API for building things with consento.",
   "main": "index.js",
   "private": true,
