@@ -38,7 +38,7 @@
     "/src/types/"
   ],
   "dependencies": {
-    "@consento/crypto": "0.0.8",
+    "@consento/crypto": "0.0.9",
     "buffer": "^5.4.3",
     "events": "^3.0.0"
   },
@@ -48,7 +48,7 @@
     "@types/events": "^3.0.0",
     "@types/jest": "^24.0.25",
     "@types/libsodium-wrappers-sumo": "^0.7.3",
-    "@typescript-eslint/eslint-plugin": "^2.13.0",
+    "@typescript-eslint/eslint-plugin": "^2.14.0",
     "eslint": "^6.8.0",
     "eslint-config-standard-with-typescript": "^11.0.1",
     "eslint-plugin-import": "^2.19.1",
