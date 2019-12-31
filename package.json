@@ -38,7 +38,7 @@
     "/src/types/"
   ],
   "dependencies": {
-    "@consento/crypto": "0.0.9",
+    "@consento/crypto": "0.0.10",
     "buffer": "^5.4.3",
     "events": "^3.0.0"
   },
