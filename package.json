@@ -10,7 +10,7 @@
     "build-ts": "tsc",
     "watch-ts": "tsc -w",
     "pack": "pack-ts",
-    "release": "npm run ci && npm run pack && cd dist && npm publish --access=public",
+    "release": "npm run ci && npm run build-ts && npm run pack && cd dist && npm publish --access=public",
     "lint": "eslint --ext .js,.ts ."
   },
   "keywords": [],
