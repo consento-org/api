@@ -32,14 +32,6 @@ async function maybeChild <T> (child: <TChild>(cancelable: ICancelable<TChild>) 
   return promise
 }
 
-async function syncLookup <A, B> (list: Iterable<A>, op: (entry: A) => Promise<B>): Promise<Map<A, B>> {
-  const result = new Map<A, B>()
-  for (const entry of list) {
-    result.set(entry, await op(entry))
-  }
-  return result
-}
-
 async function mapRequestList <Input, Output> (inputData: Input[], op: (inputData: Input[]) => Promise<Output[]>): Promise<Map<Input, Output>> {
   if (!Array.isArray(inputData)) {
     throw new Error('Expected input to be list')
@@ -136,7 +128,6 @@ export class Notifications implements INotifications {
   // eslint-disable-next-line @typescript-eslint/promise-function-async
   reset (receivers: IReceiver[]): ICancelable<boolean[]> {
     return cancelable <boolean[], Notifications>(function * (child) {
-      const idsBase64: Map<IReceiver, string> = yield syncLookup(receivers, async receiver => receiver.idBase64())
       const received: Map<IReceiver, boolean> = yield mapRequestList(
         receivers,
         async receivers => maybeChild(child, this._transport.reset(receivers))
@@ -145,7 +136,7 @@ export class Notifications implements INotifications {
       return receivers.map(receiver => {
         const changed = received.get(receiver)
         if (changed) {
-          this._receivers[idsBase64.get(receiver)] = receiver
+          this._receivers[receiver.idBase64] = receiver
         }
         return changed
       })
@@ -158,17 +149,16 @@ export class Notifications implements INotifications {
       if (receivers.length === 0) {
         return []
       }
-      const idsBase64: Map<IReceiver, string> = yield syncLookup(receivers, async receiver => receiver.idBase64())
 
       const received: Map<IReceiver, boolean> = yield mapRequestList(
-        force ? receivers : receivers.filter(receiver => this._receivers[idsBase64.get(receiver)] === undefined),
+        force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
         async receiversToRequest => maybeChild(child, this._transport.subscribe(receiversToRequest))
       )
 
       return receivers.map(receiver => {
         const changed = received.get(receiver) || false
         if (changed) {
-          this._receivers[idsBase64.get(receiver)] = receiver
+          this._receivers[receiver.idBase64] = receiver
         }
         return changed
       })
@@ -181,17 +171,16 @@ export class Notifications implements INotifications {
       if (receivers.length === 0) {
         return []
       }
-      const idsBase64: Map<IReceiver, string> = yield syncLookup(receivers, async receiver => receiver.idBase64())
 
       const received: Map<IReceiver, boolean> = yield mapRequestList(
-        force ? receivers : receivers.filter(receiver => this._receivers[idsBase64.get(receiver)] !== undefined),
+        force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
         async receiversToRequest => maybeChild(child, this._transport.unsubscribe(receiversToRequest))
       )
 
       return receivers.map(receiver => {
         const changed = received.get(receiver) || false
         if (changed) {
-          delete this._receivers[idsBase64.get(receiver)]
+          delete this._receivers[receiver.idBase64]
         }
         return changed
       })
@@ -215,14 +204,12 @@ export class Notifications implements INotifications {
       timer = setTimeout(() => _reject(Object.assign(new Error(`Not received within ${timeout} milliseconds`), { code: 'timeout', timeout })), timeout)
     }
     const processor = (message: INotification): void => {
-      (async () => {
-        if (isSuccess(message) && message.receiverIdBase64 === await receiver.idBase64()) {
-          const body = message.body
-          if (typeof filter !== 'function' || filter(body)) {
-            _resolve(body as T)
-          }
+      if (isSuccess(message) && message.receiverIdBase64 === receiver.idBase64) {
+        const body = message.body
+        if (typeof filter !== 'function' || filter(body)) {
+          _resolve(body as T)
         }
-      })().catch(_reject)
+      }
     }
     this.processors.add(processor)
     const clear = async (): Promise<void> => {

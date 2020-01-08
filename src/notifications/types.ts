@@ -1,4 +1,6 @@
-import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage, ICancelable } from '@consento/crypto'
+import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage, ICancelable } from '@consento/crypto/types'
+
+export * from '@consento/crypto/types'
 
 export interface INotificationsTransport {
   subscribe (receivers: IReceiver[]): Promise<boolean[]>
