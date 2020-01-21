@@ -1,12 +1,12 @@
 import { ISender, IReceiver, IEncodable, IEncryptedMessage, cancelable, ICancelable } from '@consento/crypto'
-import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, INotification, ISuccessNotification, INotificationError, IBodyFilter } from './types'
+import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, IBodyFilter, ENotificationType, IDecryptionError } from './types'
 
 export function isSuccess (input: INotification): input is ISuccessNotification {
-  return input.type === 'success'
+  return input.type === ENotificationType.success
 }
 
 export function isError (input: INotification): input is INotificationError {
-  return input.type === 'error'
+  return input.type === ENotificationType.error
 }
 
 const wait: (time: number) => Promise<void> = async (time: number) => new Promise<void>(resolve => setTimeout(resolve, time))
@@ -64,21 +64,23 @@ export class Notifications implements INotifications {
       const receiver = this._receivers[channelIdBase64]
       if (receiver === undefined) {
         return {
-          type: 'error',
-          code: 'unexpected-receiver',
+          type: ENotificationType.error,
+          code: EErrorCode.unexpectedReceiver,
           channelIdBase64
         }
       }
       const decryption = await receiver.decrypt(encryptedMessage)
       if (decryption.error !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
         return {
-          type: 'error',
+          type: ENotificationType.error,
           code: decryption.error,
+          receiver,
           channelIdBase64
-        }
+        } as IDecryptionError
       }
       return {
-        type: 'success',
+        type: ENotificationType.success,
         body: decryption.body,
         receiver,
         channelIdBase64
@@ -102,8 +104,8 @@ export class Notifications implements INotifications {
     }
     transport.on('error', (error: Error): void => {
       send({
-        type: 'error',
-        code: 'transport-error',
+        type: ENotificationType.error,
+        code: EErrorCode.transportError,
         error
       })
     })
@@ -114,8 +116,8 @@ export class Notifications implements INotifications {
           message = await getMessage(channelIdBase64, encryptedMessage)
         } catch (error) {
           message = {
-            type: 'error',
-            code: 'decryption-failed',
+            type: ENotificationType.error,
+            code: EErrorCode.decryptionFailed,
             error,
             channelIdBase64
           }

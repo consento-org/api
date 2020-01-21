@@ -8,20 +8,55 @@ export interface INotificationsTransport {
   reset (receivers: IReceiver[]): Promise<boolean[]>
   send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
   on (event: 'error', handler: (error: Error) => void): this
-  on (event: 'message', handler: (channelIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
+  on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
   removeListener (event: 'error', handler: (error: Error) => void): this
-  removeListener (event: 'message', handler: (channelIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
+  removeListener (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
 }
 
 export interface INotificationsOptions {
   transport: INotificationsTransport
 }
 
-export interface INotificationError {
-  type: 'error'
-  error?: Error
-  code?: string
-  channelIdBase64?: string
+export enum ENotificationType {
+  error = 'error',
+  success = 'success'
+}
+
+export enum EErrorCode {
+  invalidChannel = 'invalid-channel',
+  invalidEncryption = 'invalid-encryption',
+  invalidOwner = 'invalid-owner',
+  unexpectedReceiver = 'unexpected-receiver',
+  transportError = 'transport-error',
+  decryptionFailed = 'decryption-failed'
+}
+
+export type INotificationError = IDecryptionError | IUnexpectedReceiverError | ITransportError | IDecryptionFailedError
+
+export interface IDecryptionError {
+  type: ENotificationType.error
+  code: EErrorCode.invalidChannel | EErrorCode.invalidEncryption | EErrorCode.invalidOwner
+  receiver: IReceiver
+  channelIdBase64: string
+}
+
+export interface IUnexpectedReceiverError {
+  type: ENotificationType.error
+  code: EErrorCode.unexpectedReceiver
+  channelIdBase64: string
+}
+
+export interface ITransportError {
+  type: ENotificationType.error
+  code: EErrorCode.transportError
+  error: Error
+}
+
+export interface IDecryptionFailedError {
+  type: ENotificationType.error
+  code: EErrorCode.decryptionFailed
+  error: Error
+  channelIdBase64: string
 }
 
 export interface ISuccessNotification<T extends IEncodable = IEncodable> {
