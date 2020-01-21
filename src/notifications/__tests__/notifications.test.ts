@@ -45,7 +45,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const sender = await createSender()
       const receiver = sender.newReceiver()
       const message = 'Hello World'
-      const rnd = Math.random()
+      const rnd = `ticket${Math.random()}`
       const n = new Notifications({
         transport: Object.assign(new EventEmitter(), {
           ...transportStub,
@@ -55,13 +55,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
               .toEqual({
                 body: message
               })
-            return [rnd.toString()]
+            return [rnd]
           }
         }) as INotificationsTransport
       })
       n.processors.add((message: INotification) => { if (isError(message)) fail(message) })
       expect(await n.send(sender, 'Hello World')).toEqual([
-        rnd.toString()
+        rnd
       ])
     })
 
@@ -188,6 +188,67 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
     })
 
+    it('sending to no receipient will result in an error', async () => {
+      const sender = await createSender()
+      const transport = Object.assign(new EventEmitter(), transportStub)
+      const n = new Notifications({ transport: transport as INotificationsTransport })
+      try {
+        await n.send(sender, 'hello')
+        fail('error missing')
+      } catch (error) {
+        expect(error.code).toBe('no-receivers')
+      }
+    })
+
+    it('sending to a receipient with error response will result in an error', async () => {
+      const sender = await createSender()
+      const transport = Object.assign(new EventEmitter(), {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async send (): Promise<any[]> {
+          return ['error']
+        }
+      })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
+      try {
+        await n.send(sender, 'hello')
+        fail('error missing')
+      } catch (error) {
+        expect(error.code).toBe('all-receivers-failed')
+      }
+    })
+
+    it('sending to a list of receipients with all error response will result in an error', async () => {
+      const sender = await createSender()
+      const transport = Object.assign(new EventEmitter(), {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async send (): Promise<any[]> {
+          return ['error', 'error:hello', 'error', 'error:ho']
+        }
+      })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
+      try {
+        await n.send(sender, 'hello')
+        fail('error missing')
+      } catch (error) {
+        expect(error.code).toBe('all-receivers-failed')
+      }
+    })
+
+    it('sending to a list of receipients with some error response will be successful', async () => {
+      const sender = await createSender()
+      const transport = Object.assign(new EventEmitter(), {
+        ...transportStub,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        async send (): Promise<any[]> {
+          return ['error', 'error:hello', 'hello', 'error:ho']
+        }
+      })
+      const n = new Notifications({ transport: transport as INotificationsTransport })
+      expect(await n.send(sender, 'hello')).toEqual(['error', 'error:hello', 'hello', 'error:ho'])
+    })
+
     it('ignoring unsubscribed notifications', async () => {
       const sender = await createSender()
       const idBase64 = sender.idBase64
@@ -248,7 +309,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           expect(channel.idBase64).toBe(receiver.newAnnonymous().idBase64)
           next('handle')
           this.emit('message', receiver.idBase64, message)
-          return []
+          return ['ticket']
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
@@ -344,7 +405,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           } else {
             fail('Unexpected channel')
           }
-          return []
+          return ['ticket']
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
@@ -399,7 +460,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           } else {
             fail('unexpected channel')
           }
-          return []
+          return ['ticket']
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })

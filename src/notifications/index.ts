@@ -190,7 +190,21 @@ export class Notifications implements INotifications {
   }
 
   async send (sender: ISender, message: IEncodable): Promise<string[]> {
-    return this._transport.send(sender.newAnnonymous(), await sender.encrypt(message))
+    const tickets = await this._transport.send(sender.newAnnonymous(), await sender.encrypt(message))
+    if (tickets.length === 0) {
+      throw Object.assign(new Error('No receiver registered!'), { code: 'no-receivers' })
+    }
+    let allErrors = true
+    for (const ticket of tickets) {
+      if (!/^error/.test(ticket)) {
+        allErrors = false
+        break
+      }
+    }
+    if (allErrors) {
+      throw Object.assign(new Error(`Sending failed to all receivers! ${tickets.map(ticket => `"${ticket}"`).join(', ')}`), { tickets, code: 'all-receivers-failed' })
+    }
+    return tickets
   }
 
   // eslint-disable-next-line @typescript-eslint/promise-function-async
