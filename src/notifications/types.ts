@@ -8,9 +8,9 @@ export interface INotificationsTransport {
   reset (receivers: IReceiver[]): Promise<boolean[]>
   send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
   on (event: 'error', handler: (error: Error) => void): this
-  on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
+  on (event: 'message', handler: (channelIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
   removeListener (event: 'error', handler: (error: Error) => void): this
-  removeListener (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
+  removeListener (event: 'message', handler: (channelIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
 }
 
 export interface INotificationsOptions {
@@ -21,14 +21,14 @@ export interface INotificationError {
   type: 'error'
   error?: Error
   code?: string
-  receiverIdBase64?: string
+  channelIdBase64?: string
 }
 
 export interface ISuccessNotification<T extends IEncodable = IEncodable> {
   type: 'success'
   body: T
   receiver: IReceiver
-  receiverIdBase64: string
+  channelIdBase64: string
 }
 
 export type INotification <T extends IEncodable = IEncodable> = INotificationError | ISuccessNotification<T>

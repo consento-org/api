@@ -60,13 +60,13 @@ export class Notifications implements INotifications {
     this._receivers = {}
     this.processors = new Set()
 
-    const getMessage = async (receiverIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<INotification> => {
-      const receiver = this._receivers[receiverIdBase64]
+    const getMessage = async (channelIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<INotification> => {
+      const receiver = this._receivers[channelIdBase64]
       if (receiver === undefined) {
         return {
           type: 'error',
           code: 'unexpected-receiver',
-          receiverIdBase64
+          channelIdBase64
         }
       }
       const decryption = await receiver.decrypt(encryptedMessage)
@@ -74,14 +74,14 @@ export class Notifications implements INotifications {
         return {
           type: 'error',
           code: decryption.error,
-          receiverIdBase64
+          channelIdBase64
         }
       }
       return {
         type: 'success',
         body: decryption.body,
         receiver,
-        receiverIdBase64
+        channelIdBase64
       }
     }
     const send = (message: INotification): void => {
@@ -107,17 +107,17 @@ export class Notifications implements INotifications {
         error
       })
     })
-    transport.on('message', (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => {
+    transport.on('message', (channelIdBase64: string, encryptedMessage: IEncryptedMessage) => {
       (async () => {
         let message: INotification
         try {
-          message = await getMessage(receiverIdBase64, encryptedMessage)
+          message = await getMessage(channelIdBase64, encryptedMessage)
         } catch (error) {
           message = {
             type: 'error',
             code: 'decryption-failed',
             error,
-            receiverIdBase64
+            channelIdBase64
           }
         }
         send(message)
@@ -204,7 +204,7 @@ export class Notifications implements INotifications {
       timer = setTimeout(() => _reject(Object.assign(new Error(`Not received within ${timeout} milliseconds`), { code: 'timeout', timeout })), timeout)
     }
     const processor = (message: INotification): void => {
-      if (isSuccess(message) && message.receiverIdBase64 === receiver.idBase64) {
+      if (isSuccess(message) && message.channelIdBase64 === receiver.idBase64) {
         const body = message.body
         if (typeof filter !== 'function' || filter(body)) {
           _resolve(body as T)

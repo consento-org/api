@@ -79,7 +79,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const n = new Notifications({ transport: transport as INotificationsTransport })
       n.processors.add((message: INotification) => {
         if (isSuccess(message)) {
-          expect(receiver.idBase64).toBe(message.receiverIdBase64)
+          expect(receiver.idBase64).toBe(message.channelIdBase64)
           expect(message.body).toBe(sent)
         } else {
           fail(message)
@@ -177,7 +177,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
             expect(message).toEqual({
               type: 'error',
               code: 'unexpected-receiver',
-              receiverIdBase64: idBase64
+              channelIdBase64: idBase64
             })
             cb()
           } else {
@@ -211,7 +211,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           expect(message).toEqual({
             type: 'error',
             code: 'unexpected-receiver',
-            receiverIdBase64: idBase64
+            channelIdBase64: idBase64
           })
         } else {
           fail(message)
