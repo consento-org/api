@@ -33,7 +33,7 @@ async function maybeChild <T> (child: <TChild>(cancelable: ICancelable<TChild>) 
   return await promise
 }
 
-async function mapRequestList <Input, Output> (inputData: Input[], op: (inputData: Input[]) => Promise<Output[]>): Promise<Map<Input, Output>> {
+async function mapOutputToInput <Input, Output> ({ input: inputData, op }: { input: Input[], op: (inputData: Input[]) => Promise<Output[]> }): Promise<Map<Input, Output>> {
   if (!Array.isArray(inputData)) {
     throw new Error('Expected input to be list')
   }
@@ -131,10 +131,10 @@ export class Notifications implements INotifications {
   // eslint-disable-next-line @typescript-eslint/promise-function-async
   reset (receivers: IReceiver[]): ICancelable<boolean[]> {
     return cancelable <boolean[], Notifications>(function * (child) {
-      const received: Map<IReceiver, boolean> = yield mapRequestList(
-        receivers,
-        async receivers => await maybeChild(child, this._transport.reset(receivers))
-      )
+      const received: Map<IReceiver, boolean> = yield mapOutputToInput({
+        input: receivers,
+        op: async input => await maybeChild(child, this._transport.reset(input))
+      })
       this._receivers = {}
       return receivers.map(receiver => {
         const changed = received.get(receiver)
@@ -153,10 +153,10 @@ export class Notifications implements INotifications {
         return []
       }
 
-      const received: Map<IReceiver, boolean> = yield mapRequestList(
-        force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
-        async receiversToRequest => await maybeChild(child, this._transport.subscribe(receiversToRequest))
-      )
+      const received: Map<IReceiver, boolean> = yield mapOutputToInput({
+        input: force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
+        op: async input => await maybeChild(child, this._transport.subscribe(input))
+      })
 
       return receivers.map(receiver => {
         const changed = received.get(receiver) || false
@@ -175,10 +175,10 @@ export class Notifications implements INotifications {
         return []
       }
 
-      const received: Map<IReceiver, boolean> = yield mapRequestList(
-        force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
-        async receiversToRequest => await maybeChild(child, this._transport.unsubscribe(receiversToRequest))
-      )
+      const received: Map<IReceiver, boolean> = yield mapOutputToInput({
+        input: force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
+        op: async input => await maybeChild(child, this._transport.unsubscribe(input))
+      })
 
       return receivers.map(receiver => {
         const changed = received.get(receiver) || false
