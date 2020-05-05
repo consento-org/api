@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-throw-literal */
 import { ISender, IReceiver, IEncodable, IEncryptedMessage, cancelable, ICancelable } from '@consento/crypto'
 import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, IBodyFilter, ENotificationType, IDecryptionError } from './types'
 
@@ -9,7 +10,7 @@ export function isError (input: INotification): input is INotificationError {
   return input.type === ENotificationType.error
 }
 
-const wait: (time: number) => Promise<void> = async (time: number) => new Promise<void>(resolve => setTimeout(resolve, time))
+const wait: (time: number) => Promise<void> = async (time: number) => await new Promise<void>(resolve => setTimeout(resolve, time))
 
 async function untilTrue (op: () => boolean): Promise<void> {
   while (!op()) {
@@ -29,7 +30,7 @@ async function maybeChild <T> (child: <TChild>(cancelable: ICancelable<TChild>) 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     child(promise)
   }
-  return promise
+  return await promise
 }
 
 async function mapRequestList <Input, Output> (inputData: Input[], op: (inputData: Input[]) => Promise<Output[]>): Promise<Map<Input, Output>> {
@@ -132,7 +133,7 @@ export class Notifications implements INotifications {
     return cancelable <boolean[], Notifications>(function * (child) {
       const received: Map<IReceiver, boolean> = yield mapRequestList(
         receivers,
-        async receivers => maybeChild(child, this._transport.reset(receivers))
+        async receivers => await maybeChild(child, this._transport.reset(receivers))
       )
       this._receivers = {}
       return receivers.map(receiver => {
@@ -154,7 +155,7 @@ export class Notifications implements INotifications {
 
       const received: Map<IReceiver, boolean> = yield mapRequestList(
         force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
-        async receiversToRequest => maybeChild(child, this._transport.subscribe(receiversToRequest))
+        async receiversToRequest => await maybeChild(child, this._transport.subscribe(receiversToRequest))
       )
 
       return receivers.map(receiver => {
@@ -176,12 +177,13 @@ export class Notifications implements INotifications {
 
       const received: Map<IReceiver, boolean> = yield mapRequestList(
         force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
-        async receiversToRequest => maybeChild(child, this._transport.unsubscribe(receiversToRequest))
+        async receiversToRequest => await maybeChild(child, this._transport.unsubscribe(receiversToRequest))
       )
 
       return receivers.map(receiver => {
         const changed = received.get(receiver) || false
         if (changed) {
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete this._receivers[receiver.idBase64]
         }
         return changed
@@ -202,7 +204,7 @@ export class Notifications implements INotifications {
       }
     }
     if (allErrors) {
-      throw Object.assign(new Error(`Sending failed to all receivers! ${tickets.map(ticket => `"${ticket}"`).join(', ')}`), { tickets, code: 'all-receivers-failed' })
+      throw Object.assign(new Error(`Sending failed to all receivers! ${tickets.map(ticket => `"${String(ticket)}"`).join(', ')}`), { tickets, code: 'all-receivers-failed' })
     }
     return tickets
   }
@@ -235,6 +237,7 @@ export class Notifications implements INotifications {
       }
       await this.unsubscribe([receiver])
     }
+    // eslint-disable-next-line @typescript-eslint/return-await
     return cancelable<{ afterSubscribe: ICancelable<T> }, Notifications>(function * (child) {
       yield child(this.subscribe([receiver]))
       return {
