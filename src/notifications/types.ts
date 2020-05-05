@@ -1,3 +1,4 @@
+import { EDecryptionError } from '@consento/crypto/core/types'
 import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage, ICancelable } from '@consento/crypto/types'
 
 export * from '@consento/crypto/types'
@@ -23,9 +24,6 @@ export enum ENotificationType {
 }
 
 export enum EErrorCode {
-  invalidChannel = 'invalid-channel',
-  invalidEncryption = 'invalid-encryption',
-  invalidOwner = 'invalid-owner',
   unexpectedReceiver = 'unexpected-receiver',
   transportError = 'transport-error',
   decryptionFailed = 'decryption-failed'
@@ -35,7 +33,7 @@ export type INotificationError = IDecryptionError | IUnexpectedReceiverError | I
 
 export interface IDecryptionError {
   type: ENotificationType.error
-  code: EErrorCode.invalidChannel | EErrorCode.invalidEncryption | EErrorCode.invalidOwner
+  code: EDecryptionError
   receiver: IReceiver
   channelIdBase64: string
 }

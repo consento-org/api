@@ -35,7 +35,7 @@ async function maybeChild <T> (child: <TChild>(cancelable: ICancelable<TChild>) 
 
 async function mapOutputToInput <Input, Output> ({ input: inputData, op }: { input: Input[], op: (inputData: Input[]) => Promise<Output[]> }): Promise<Map<Input, Output>> {
   if (!Array.isArray(inputData)) {
-    throw new Error('Expected input to be list')
+    throw new Error(`Expected input to be list but was ${typeof inputData}`)
   }
   const outputData = await op(inputData)
   if (!Array.isArray(outputData)) {
@@ -192,7 +192,7 @@ export class Notifications implements INotifications {
   }
 
   async send (sender: ISender, message: IEncodable): Promise<string[]> {
-    const tickets = await this._transport.send(sender.newAnnonymous(), await sender.encrypt(message))
+    const tickets = await this._transport.send(sender.annonymous, await sender.encrypt(message))
     if (tickets.length === 0) {
       throw Object.assign(new Error('No receiver registered!'), { code: 'no-receivers' })
     }
