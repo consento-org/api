@@ -39,26 +39,26 @@
   ],
   "dependencies": {
     "@consento/crypto": "0.0.12",
-    "buffer": "^5.4.3",
+    "buffer": "^5.6.0",
     "events": "^3.0.0"
   },
   "devDependencies": {
-    "@consento/sync-randombytes": "^1.0.3",
+    "@consento/sync-randombytes": "^1.0.4",
     "@leichtgewicht/pack-ts": "^1.0.0",
     "@types/events": "^3.0.0",
-    "@types/jest": "^24.0.25",
+    "@types/jest": "^25.2.1",
     "@types/libsodium-wrappers-sumo": "^0.7.3",
-    "@typescript-eslint/eslint-plugin": "^2.15.0",
+    "@typescript-eslint/eslint-plugin": "^2.31.0",
     "eslint": "^6.8.0",
     "eslint-config-standard-with-typescript": "^11.0.1",
-    "eslint-plugin-import": "^2.19.1",
-    "eslint-plugin-node": "^11.0.0",
+    "eslint-plugin-import": "^2.20.2",
+    "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-promise": "^4.2.1",
     "eslint-plugin-standard": "^4.0.1",
-    "jest": "^24.9.0",
-    "ts-jest": "^24.3.0",
-    "ts-node": "^8.5.4",
-    "typescript": "^3.7.4"
+    "jest": "^25.5.4",
+    "ts-jest": "^25.4.0",
+    "ts-node": "^8.10.1",
+    "typescript": "^3.8.3"
   },
   "repository": {
     "type": "git",
