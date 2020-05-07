@@ -38,13 +38,13 @@
     "/src/types/"
   ],
   "dependencies": {
-    "@consento/crypto": "^0.1.0",
+    "@consento/crypto": "^0.1.1",
     "buffer": "^5.6.0",
     "events": "^3.0.0"
   },
   "devDependencies": {
-    "@consento/sync-randombytes": "^1.0.4",
-    "@leichtgewicht/pack-ts": "^1.0.0",
+    "@consento/sync-randombytes": "^1.0.5",
+    "@leichtgewicht/pack-ts": "^1.0.1",
     "@types/events": "^3.0.0",
     "@types/jest": "^25.2.1",
     "@types/libsodium-wrappers-sumo": "^0.7.3",
