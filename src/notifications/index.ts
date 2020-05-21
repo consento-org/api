@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-throw-literal */
 import { ISender, IReceiver, IEncodable, IEncryptedMessage, cancelable, ICancelable } from '@consento/crypto'
 import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, IBodyFilter, ENotificationType, IDecryptionError } from './types'
+import { EventEmitter } from 'events'
 
 export function isSuccess (input: INotification): input is ISuccessNotification {
   return input.type === ENotificationType.success
@@ -50,6 +51,24 @@ async function mapOutputToInput <Input, Output> ({ input: inputData, op }: { inp
   return received
 }
 
+class EmptyTransport extends EventEmitter implements INotificationsTransport {
+  async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
+    return receivers.map(() => false)
+  }
+
+  async unsubscribe (receivers: IReceiver[]): Promise<boolean[]> {
+    return receivers.map(() => false)
+  }
+
+  async reset (receivers: IReceiver[]): Promise<boolean[]> {
+    return receivers.map(() => false)
+  }
+
+  async send (): Promise<any[]> {
+    throw new Error('Sending of notifications not implemented')
+  }
+}
+
 export class Notifications implements INotifications {
   _transport: INotificationsTransport
   _receivers: { [receiverIdBase64: string]: IReceiver }
@@ -57,6 +76,10 @@ export class Notifications implements INotifications {
   processors: Set<INotificationProcessor>
 
   constructor ({ transport }: INotificationsOptions) {
+    if (transport === null || transport === undefined) {
+      console.warn('Warning: Transport is missing for consento API, notifications will not work.')
+      transport = new EmptyTransport()
+    }
     this._transport = transport
     this._receivers = {}
     this.processors = new Set()
