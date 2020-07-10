@@ -43,7 +43,6 @@
     "events": "^3.0.0"
   },
   "devDependencies": {
-    "@consento/sync-randombytes": "^1.0.5",
     "@leichtgewicht/pack-ts": "^1.0.1",
     "@types/events": "^3.0.0",
     "@types/jest": "^25.2.1",
