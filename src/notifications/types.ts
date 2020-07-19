@@ -1,12 +1,13 @@
+/* eslint-disable @typescript-eslint/method-signature-style */
 import { EDecryptionError } from '@consento/crypto/core/types'
-import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage, ICancelable } from '@consento/crypto/types'
+import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage } from '@consento/crypto/types'
 
 export * from '@consento/crypto/types'
 
 export interface INotificationsTransport {
-  subscribe (receivers: IReceiver[]): Promise<boolean[]>
-  unsubscribe (receivers: IReceiver[]): Promise<boolean[]>
-  reset (receivers: IReceiver[]): Promise<boolean[]>
+  subscribe (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
+  unsubscribe (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
+  reset (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
   send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
   on (event: 'error', handler: (error: Error) => void): this
   on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
@@ -74,13 +75,11 @@ export interface IConnection {
 }
 
 export interface INotifications {
-  subscribe (receivers: IReceiver[], force?: boolean): ICancelable<boolean[]>
-  unsubscribe (receivers: IReceiver[], force?: boolean): ICancelable<boolean[]>
-  reset (receivers: IReceiver[]): ICancelable<boolean[]>
+  subscribe (receivers: IReceiver[], opts?: { force?: boolean, signal?: AbortSignal }): Promise<boolean[]>
+  unsubscribe (receivers: IReceiver[], opts?: { force?: boolean, signal?: AbortSignal }): Promise<boolean[]>
+  reset (receivers: IReceiver[]): Promise<boolean[]>
   processors: Set<INotificationProcessor>
   send (sender: ISender, message: IEncodable): Promise<string[]>
-  receive (receiver: IReceiver): ICancelable<{ afterSubscribe: ICancelable<IEncodable> }>
-  receive <T extends IEncodable>(receiver: IReceiver, filter: IBodyFilter<T>): ICancelable<{ afterSubscribe: ICancelable<T> }>
-  sendAndReceive (connection: IConnection, message: IEncodable): ICancelable<{ afterSubscribe: ICancelable<IEncodable> }>
-  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, filter: IBodyFilter<T>): ICancelable<{ afterSubscribe: ICancelable<T> }>
+  receive <T extends IEncodable>(receiver: IReceiver, opts?: { filter?: IBodyFilter<T>, signal?: AbortSignal }): Promise<{ afterSubscribe: Promise<IEncodable> }>
+  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, opts?: { filter: IBodyFilter<T>, signal?: AbortSignal }): Promise<{ afterSubscribe: Promise<T> }>
 }

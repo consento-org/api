@@ -1,9 +1,10 @@
-import { setup, IAnnonymous, IReceiver, IEncryptedMessage, CancelError, IConnection } from '@consento/crypto'
+import { setup, IAnnonymous, IReceiver, IEncryptedMessage, IConnection, AbortError } from '@consento/crypto'
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { cores } from '@consento/crypto/core/cores'
 import { Notifications, isError, isSuccess } from '../index'
 import { INotificationsTransport, INotification } from '../types'
 import { EventEmitter } from 'events'
+import { AbortController } from 'abort-controller'
 
 const transportStub = {
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -151,7 +152,8 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       expect(await n.subscribe([aliceToBob.receiver, bobToAlice.receiver])).toEqual([true, false])
       const receiveA = (await n.receive(aliceToBob.receiver)).afterSubscribe
       try {
-        await (await n.receive(bobToAlice.receiver, null, 100)).afterSubscribe
+        const { afterSubscribe } = await n.receive(bobToAlice.receiver, { timeout: 100 })
+        await afterSubscribe
       } catch (error) {
         expect(error.code).toBe('timeout')
       }
@@ -205,12 +207,9 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       })
       const n = new Notifications({ transport: transport as INotificationsTransport })
-      try {
-        await n.send(sender, 'hello')
-        fail('error missing')
-      } catch (error) {
-        expect(error.code).toBe('all-receivers-failed')
-      }
+      await expect(n.send(sender, 'hello')).rejects.toMatchObject({
+        code: 'all-receivers-failed'
+      })
     })
 
     it('sending to a list of receipients with all error response will result in an error', async () => {
@@ -223,12 +222,9 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       })
       const n = new Notifications({ transport: transport as INotificationsTransport })
-      try {
-        await n.send(sender, 'hello')
-        fail('error missing')
-      } catch (error) {
-        expect(error.code).toBe('all-receivers-failed')
-      }
+      await expect(n.send(sender, 'hello')).rejects.toMatchObject({
+        code: 'all-receivers-failed'
+      })
     })
 
     it('sending to a list of receipients with some error response will be successful', async () => {
@@ -306,9 +302,10 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      // @ts-ignore TS2339
-      const { afterSubscribe } = await n.receive(receiver, (input: any): input is string => {
-        return input === 'ho'
+      const { afterSubscribe } = await n.receive(receiver, {
+        filter: (input: any): input is string => {
+          return input === 'ho'
+        }
       })
       await n.send(sender, 'hi')
       await n.send(sender, 'ho')
@@ -344,15 +341,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      // @ts-ignore TS2339
-      const { afterSubscribe } = await n.receive(receiver, (input: any): input is string => input === 'ho')
-      try {
-        // eslint-disable-next-line @typescript-eslint/promise-function-async
-        await afterSubscribe.cancel().then(() => afterSubscribe)
-        fail('no error?')
-      } catch (err) {
-        expect(err.message).toBe('cancelled')
-      }
+      const controller = new AbortController()
+      const { signal } = controller
+      const { afterSubscribe } = await n.receive(receiver, {
+        filter: (input: any): input is string => input === 'ho',
+        signal
+      })
+      setTimeout(() => controller.abort(), 0)
+      await expect(afterSubscribe).rejects.toEqual(new AbortError())
       expect(n.processors.size).toBe(0)
       expect(ops).toEqual(['subscribe', 'unsubscribe'])
     })
@@ -397,8 +393,9 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      // @ts-ignore TS2339
-      const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', (input: any): input is string => input === 'pong')
+      const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', {
+        filter: (input: any): input is string => input === 'pong'
+      })
       const result = await afterSubscribe
       expect(result).toBe('pong')
       expect(n.processors.size).toBe(0)
@@ -413,6 +410,8 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         ops.push(op)
       }
 
+      const controller = new AbortController()
+      const { signal } = controller
       const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
@@ -433,7 +432,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
             expect(await bobToAlice.receiver.decrypt(message)).toEqual({ body: 'ping' })
             next('ping-received-sending-pong')
             // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            await afterSubscribe.cancel()
+            await afterSubscribe
             // Cancelling the subscription should finish the test, don't log after this point
             n.send(bobToAlice.sender, 'pong').catch(fail)
           } else if (isChannel(aliceToBob.receiver, channel)) {
@@ -447,15 +446,12 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       }) as INotificationsTransport
       const n = new Notifications({ transport })
-      // @ts-ignore TS2339
-      const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', (input: any): input is string => input === 'pong')
-      try {
-        await afterSubscribe
-        fail('no error?')
-      } catch (err) {
-        expect(err).toBeInstanceOf(CancelError)
-      }
-      expect(afterSubscribe.cancelled).toBe(true)
+      const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', {
+        filter: (input: any): input is string => input === 'pong',
+        signal
+      })
+      setTimeout(() => controller.abort(), 10)
+      await expect(afterSubscribe).rejects.toEqual(new AbortError())
       expect(n.processors.size).toBe(0)
       expect(ops).toEqual(['received-subscription', 'ping-received-sending-pong', 'received-unsubscription'])
     })
