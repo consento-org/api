@@ -9,14 +9,18 @@ export interface INotificationsTransport {
   unsubscribe (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
   reset (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
   send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
-  on (event: 'error', handler: (error: Error) => void): this
-  on (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
-  removeListener (event: 'error', handler: (error: Error) => void): this
-  removeListener (event: 'message', handler: (receiverIdBase64: string, encryptedMessage: IEncryptedMessage) => void): this
 }
 
+export interface INotificationControl {
+  error (error: Error): void
+  message (receiverIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<void>
+  reset (): Promise<void>
+}
+
+export type INewNotificationsTransport = (control: INotificationControl) => INotificationsTransport
+
 export interface INotificationsOptions {
-  transport: INotificationsTransport
+  transport: INewNotificationsTransport
 }
 
 export enum ENotificationType {

@@ -1,12 +1,12 @@
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { IConsentoCrypto } from '@consento/crypto'
-import { INotifications, INotificationsTransport } from './notifications/types'
+import { INotifications, INewNotificationsTransport } from './notifications/types'
 
 export * from './notifications/types'
 
 export interface IAPIOptions {
   cryptoCore: ICryptoCore
-  notificationTransport: INotificationsTransport
+  notificationTransport: INewNotificationsTransport
 }
 
 export interface IAPI {

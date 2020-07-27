@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-throw-literal */
 import { ISender, IReceiver, IEncodable, IEncryptedMessage, AbortError } from '@consento/crypto'
 import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, IBodyFilter, ENotificationType, IDecryptionError } from './types'
-import { EventEmitter } from 'events'
 import { mapOutputToInput } from './mapOutputToInput'
 
 export function isSuccess (input: INotification): input is ISuccessNotification {
@@ -13,7 +12,7 @@ export function isError (input: INotification): input is INotificationError {
   return input.type === ENotificationType.error
 }
 
-class EmptyTransport extends EventEmitter implements INotificationsTransport {
+class EmptyTransport implements INotificationsTransport {
   async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
     return receivers.map(() => false)
   }
@@ -62,9 +61,8 @@ export class Notifications implements INotifications {
   constructor ({ transport }: INotificationsOptions) {
     if (transport === null || transport === undefined) {
       console.warn('Warning: Transport is missing for consento API, notifications will not work.')
-      transport = new EmptyTransport()
+      transport = () => new EmptyTransport()
     }
-    this._transport = transport
     this._receivers = {}
     this.processors = new Set()
 
@@ -110,15 +108,15 @@ export class Notifications implements INotifications {
         }
       } while (true)
     }
-    transport.on('error', (error: Error): void => {
-      send({
-        type: ENotificationType.error,
-        code: EErrorCode.transportError,
-        error
-      })
-    })
-    transport.on('message', (channelIdBase64: string, encryptedMessage: IEncryptedMessage) => {
-      (async () => {
+    this._transport = transport({
+      error (error: Error): void {
+        send({
+          type: ENotificationType.error,
+          code: EErrorCode.transportError,
+          error
+        })
+      },
+      async message (channelIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<void> {
         let message: INotification
         try {
           message = await getMessage(channelIdBase64, encryptedMessage)
@@ -131,7 +129,7 @@ export class Notifications implements INotifications {
           }
         }
         send(message)
-      })().catch(error => console.log(error))
+      }
     })
   }
 

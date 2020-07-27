@@ -2,11 +2,10 @@ import { setup, IAnnonymous, IReceiver, IEncryptedMessage, IConnection, AbortErr
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { cores } from '@consento/crypto/core/cores'
 import { Notifications, isError, isSuccess } from '../index'
-import { INotificationsTransport, INotification } from '../types'
-import { EventEmitter } from 'events'
+import { INotificationsTransport, INotification, INotificationControl, INewNotificationsTransport } from '../types'
 import { AbortController } from 'abort-controller'
 
-const transportStub = {
+const transportStub: INotificationsTransport = {
   // eslint-disable-next-line @typescript-eslint/require-await
   async subscribe (input: IReceiver[]): Promise<boolean[]> { return input.map(_ => false) },
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -50,7 +49,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const message = 'Hello World'
       const rnd = `ticket${Math.random()}`
       const n = new Notifications({
-        transport: Object.assign(new EventEmitter(), {
+        transport: () => ({
           ...transportStub,
           async send (receivedChannel: IAnnonymous, encrypted: any): Promise<any[]> {
             expect(await receivedChannel.equals(sender.annonymous)).toBe(true)
@@ -60,7 +59,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
               })
             return [rnd]
           }
-        }) as INotificationsTransport
+        })
       })
       n.processors.add((message: INotification) => { if (isError(message)) fail(message) })
       expect(await n.send(sender, 'Hello World')).toEqual([
@@ -71,15 +70,20 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
     it('processing okay', async () => {
       const { sender, receiver } = await createReceiver()
       const idBase64 = sender.idBase64
-      const transport = Object.assign(new EventEmitter(), {
+      let control: INotificationControl
+      const transportImpl = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (input: IReceiver[]): Promise<boolean[]> {
           return input.map(_ => true)
         }
-      })
+      }
+      const transport = (_control: INotificationControl): INotificationsTransport => {
+        control = _control
+        return transportImpl
+      }
       const sent = 'Hello World'
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      const n = new Notifications({ transport })
       n.processors.add((message: INotification) => {
         if (isSuccess(message)) {
           expect(receiver.idBase64).toBe(message.channelIdBase64)
@@ -89,15 +93,16 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       })
       expect(await n.subscribe([receiver])).toEqual([true])
-      transport.emit('message', idBase64, await sender.encrypt(sent))
+      await control.message(idBase64, await sender.encrypt(sent))
     })
 
     it('a successful reset will clear all subscriptions', async () => {
       const { aliceToBob, bobToAlice } = await twoWayConnection()
-      const transport = Object.assign(new EventEmitter(), {
+      let control: INotificationControl
+      const transportImpl = {
         // eslint-disable-next-line @typescript-eslint/require-await
         async send (channel: IAnnonymous, encrypted: any): Promise<any[]> {
-          transport.emit('message', channel.idBase64, encrypted)
+          await control.message(channel.idBase64, encrypted)
           return [Math.random().toString()]
         },
         // eslint-disable-next-line @typescript-eslint/require-await
@@ -115,8 +120,12 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           expect(input.length).toBe(1)
           return input.map(_ => true)
         }
-      })
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      }
+      const transport = (_control: INotificationControl): INotificationsTransport => {
+        control = _control
+        return transportImpl
+      }
+      const n = new Notifications({ transport })
       n.processors.add(notification => {
         ;(async () => {
           if (isSuccess(notification)) {
@@ -135,7 +144,8 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const { aliceToBob, bobToAlice } = await twoWayConnection()
       const aTicket = `ATicket${Math.random().toString(32)}`
       const bTicket = `BTicket${Math.random().toString(32)}`
-      const transport = Object.assign(new EventEmitter(), {
+      let control: INotificationControl
+      const transport: INotificationsTransport = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
@@ -144,11 +154,16 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           })
         },
         async send (channel: IAnnonymous, encrypted: any): Promise<any[]> {
-          transport.emit('message', channel.idBase64, encrypted)
+          await control.message(channel.idBase64, encrypted)
           return [await channel.equals(bobToAlice.sender.annonymous) ? aTicket : bTicket]
         }
+      }
+      const n = new Notifications({
+        transport (_control) {
+          control = _control
+          return transport
+        }
       })
-      const n = new Notifications({ transport: transport as INotificationsTransport })
       expect(await n.subscribe([aliceToBob.receiver, bobToAlice.receiver])).toEqual([true, false])
       const receiveA = (await n.receive(aliceToBob.receiver)).afterSubscribe
       try {
@@ -165,8 +180,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
     it('ingoring never-subscribed notifications', async () => {
       const { sender } = await createReceiver()
       const idBase64 = sender.idBase64
-      const transport = Object.assign(new EventEmitter(), transportStub)
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      let control: INotificationControl
+      const n = new Notifications({
+        transport (_control) {
+          control = _control
+          return transportStub
+        }
+      })
       const msg = await sender.encrypt('Hello World')
       await wait(10, cb => {
         n.processors.add((message: INotification) => {
@@ -181,14 +201,17 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
             fail(message)
           }
         })
-        transport.emit('message', idBase64, msg)
+        control.message(idBase64, msg)
+          .then(
+            () => {},
+            (error: Error) => fail(error)
+          )
       })
     })
 
     it('sending to no receipient will result in an error', async () => {
       const { sender } = await createReceiver()
-      const transport = Object.assign(new EventEmitter(), transportStub)
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      const n = new Notifications({ transport: () => transportStub })
       try {
         await n.send(sender, 'hello')
         fail('error missing')
@@ -199,14 +222,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
 
     it('sending to a receipient with error response will result in an error', async () => {
       const { sender } = await createReceiver()
-      const transport = Object.assign(new EventEmitter(), {
+      const transport = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async send (): Promise<any[]> {
           return ['error']
         }
-      })
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      }
+      const n = new Notifications({ transport: () => transport })
       await expect(n.send(sender, 'hello')).rejects.toMatchObject({
         code: 'all-receivers-failed'
       })
@@ -214,14 +237,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
 
     it('sending to a list of receipients with all error response will result in an error', async () => {
       const { sender } = await createReceiver()
-      const transport = Object.assign(new EventEmitter(), {
+      const transport = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async send (): Promise<any[]> {
           return ['error', 'error:hello', 'error', 'error:ho']
         }
-      })
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      }
+      const n = new Notifications({ transport: () => transport })
       await expect(n.send(sender, 'hello')).rejects.toMatchObject({
         code: 'all-receivers-failed'
       })
@@ -229,14 +252,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
 
     it('sending to a list of receipients with some error response will be successful', async () => {
       const { sender } = await createReceiver()
-      const transport = Object.assign(new EventEmitter(), {
+      const transport = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async send (): Promise<any[]> {
           return ['error', 'error:hello', 'hello', 'error:ho']
         }
-      })
-      const n = new Notifications({ transport: transport as INotificationsTransport })
+      }
+      const n = new Notifications({ transport: () => transport })
       expect(await n.send(sender, 'hello')).toEqual(['error', 'error:hello', 'hello', 'error:ho'])
     })
 
@@ -244,7 +267,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const { sender, receiver } = await createReceiver()
       const idBase64 = sender.idBase64
       const sent = 'Hello World'
-      const transport = Object.assign(new EventEmitter(), {
+      const transport = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (_: IReceiver[]): Promise<boolean[]> {
@@ -255,8 +278,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           expect(receivers).toEqual([receiver])
           return [true]
         }
+      }
+      let control: INotificationControl
+      const n = new Notifications({
+        transport (_control) {
+          control = _control
+          return transport
+        }
       })
-      const n = new Notifications({ transport: transport as INotificationsTransport })
       n.processors.add((message: INotification) => {
         if (isError(message)) {
           expect(message).toEqual({
@@ -270,7 +299,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
       await n.subscribe([receiver])
       await n.unsubscribe([receiver])
-      transport.emit('message', idBase64, await sender.encrypt(sent))
+      await control.message(idBase64, await sender.encrypt(sent))
     })
 
     it('receiving a certain message', async () => {
@@ -279,7 +308,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       const next = (op: string): void => {
         ops.push(op)
       }
-      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
+      const transport: INewNotificationsTransport = (control: INotificationControl) => ({
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
@@ -297,10 +326,10 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
           expect(channel.idBase64).toBe(receiver.annonymous.idBase64)
           next('handle')
-          this.emit('message', receiver.idBase64, message)
+          await control.message(receiver.idBase64, message)
           return ['ticket']
         }
-      }) as INotificationsTransport
+      })
       const n = new Notifications({ transport })
       const { afterSubscribe } = await n.receive(receiver, {
         filter: (input: any): input is string => {
@@ -318,7 +347,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
     it('cancelling the receiving of a message', async () => {
       const { receiver } = await createReceiver()
       const ops = [] as string[]
-      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
+      const transport: INewNotificationsTransport = (control: INotificationControl) => ({
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
@@ -336,11 +365,11 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         async send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]> {
           expect(channel.idBase64).toBe(receiver.annonymous.idBase64)
           ops.push('handle')
-          this.emit('message', receiver.idBase64, message)
+          await control.message(receiver.idBase64, message)
           return ['abcd', 'efgh']
         }
-      }) as INotificationsTransport
-      const n = new Notifications({ transport })
+      })
+      const n = new Notifications({ transport: transport })
       const controller = new AbortController()
       const { signal } = controller
       const { afterSubscribe } = await n.receive(receiver, {
@@ -365,7 +394,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         next('ping-received-sending-pong')
         await n.send(bobToAlice.sender, 'pong')
       }
-      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
+      const transport: INewNotificationsTransport = (control: INotificationControl) => ({
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
@@ -385,13 +414,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           } else if (isChannel(aliceToBob.receiver, channel)) {
             next('handover-encrypted-message')
             expect(await aliceToBob.receiver.decrypt(message)).toEqual({ body: 'pong' })
-            this.emit('message', aliceToBob.receiver.idBase64, message)
+            await control.message(aliceToBob.receiver.idBase64, message)
           } else {
             fail('Unexpected channel')
           }
           return ['ticket']
         }
-      }) as INotificationsTransport
+      })
       const n = new Notifications({ transport })
       const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', {
         filter: (input: any): input is string => input === 'pong'
@@ -412,7 +441,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
 
       const controller = new AbortController()
       const { signal } = controller
-      const transport: INotificationsTransport = Object.assign(new EventEmitter(), {
+      const transport: INewNotificationsTransport = (control: INotificationControl) => ({
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
         async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
@@ -438,13 +467,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           } else if (isChannel(aliceToBob.receiver, channel)) {
             next('handover-encrypted-message')
             expect(channelId).toBe(aliceToBob.receiver.idBase64)
-            this.emit('message', aliceToBob.receiver.idBase64, message)
+            await control.message(aliceToBob.receiver.idBase64, message)
           } else {
             fail('unexpected channel')
           }
           return ['ticket']
         }
-      }) as INotificationsTransport
+      })
       const n = new Notifications({ transport })
       const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', {
         filter: (input: any): input is string => input === 'pong',
