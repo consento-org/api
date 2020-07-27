@@ -116,6 +116,9 @@ export class Notifications implements INotifications {
           error
         })
       },
+      reset: async (): Promise<void> => {
+        await this.reset(Object.values(this._receivers))
+      },
       async message (channelIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<void> {
         let message: INotification
         try {

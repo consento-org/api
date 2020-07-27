@@ -484,5 +484,26 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       expect(n.processors.size).toBe(0)
       expect(ops).toEqual(['received-subscription', 'ping-received-sending-pong', 'received-unsubscription'])
     })
+
+    it('allowing for transport to initiate a reset', async () => {
+      const { receiver } = await createReceiver()
+      let control: INotificationControl
+      let resetCalled = false
+      const n = new Notifications({
+        transport (_control) {
+          control = _control
+          return {
+            ...transportStub,
+            async reset (input: IReceiver[]): Promise<boolean[]> {
+              resetCalled = true
+              return input.map(_ => true)
+            }
+          }
+        }
+      })
+      await n.subscribe([receiver])
+      await control.reset()
+      expect(resetCalled).toBe(true)
+    })
   })
 })
