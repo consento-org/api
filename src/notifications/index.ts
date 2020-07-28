@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/method-signature-style */
 /* eslint-disable @typescript-eslint/no-throw-literal */
-import { IEncodable, wrapTimeout, ITimeoutOptions, cleanupPromise } from '../util'
+import { IEncodable, wrapTimeout, ITimeoutOptions, cleanupPromise, composeAbort } from '../util'
 import { ISender, IReceiver, IEncryptedMessage } from '@consento/crypto'
 import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, ENotificationType, IDecryptionError, ISubscribeOptions, IReceiveOptions } from './types'
 import { mapOutputToInput } from './mapOutputToInput'
@@ -194,7 +194,8 @@ export class Notifications implements INotifications {
   }
 
   async receive <T extends IEncodable> (receiver: IReceiver, opts: IReceiveOptions<T> = {}): Promise<{ afterSubscribe: Promise<T> }> {
-    const { filter } = opts
+    const { filter, signal: inputSignal } = opts
+    const receiveControl = composeAbort(inputSignal)
     const received = cleanupPromise<T>(resolve => {
       const processor = (message: INotification): void => {
         if (isSuccess(message) && message.channelIdBase64 === receiver.idBase64) {
@@ -209,10 +210,14 @@ export class Notifications implements INotifications {
         this.processors.delete(processor)
         await this.unsubscribe([receiver])
       }
-    }, opts)
+    }, { ...opts, signal: receiveControl.signal })
     try {
       await this.subscribe([receiver], opts)
     } catch (err) {
+      try {
+        receiveControl.abort()
+        await received
+      } catch (_) {}
       return {
         afterSubscribe: Promise.reject(err)
       }
@@ -229,14 +234,23 @@ export class Notifications implements INotifications {
     opts: IReceiveOptions<T> = {}
   ): Promise<{ afterSubscribe: Promise<T> }> {
     return await wrapTimeout(async signal => {
-      const { afterSubscribe: receivePromise } = await this.receive<T>(connection.receiver, { signal })
+      const receiveControl = composeAbort(signal)
+      const { afterSubscribe: received } = await this.receive<T>(connection.receiver, { signal: receiveControl.signal })
       return {
         afterSubscribe: (async () => {
-          await Promise.race([
-            this.send(connection.sender, message, { signal }),
-            receivePromise
-          ])
-          return await receivePromise
+          try {
+            await Promise.race([
+              this.send(connection.sender, message, { signal }),
+              received
+            ])
+          } catch (err) {
+            try {
+              receiveControl.abort()
+              await received
+            } catch (_) {}
+            throw err
+          }
+          return await received
         })()
       }
     }, opts)

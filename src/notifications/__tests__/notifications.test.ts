@@ -371,10 +371,9 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
       const n = new Notifications({ transport: transport })
       const controller = new AbortController()
-      const { signal } = controller
       const { afterSubscribe } = await n.receive(receiver, {
         filter: (input: any): input is string => input === 'ho',
-        signal
+        signal: controller.signal
       })
       setTimeout(() => controller.abort(), 0)
       await expect(afterSubscribe).rejects.toEqual(new AbortError())
@@ -439,8 +438,6 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         ops.push(op)
       }
 
-      const controller = new AbortController()
-      const { signal } = controller
       const transport: INewNotificationsTransport = (control: INotificationControl) => ({
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
@@ -475,12 +472,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       })
       const n = new Notifications({ transport })
+      const controller = new AbortController()
       const { afterSubscribe } = await n.sendAndReceive(aliceToBob, 'ping', {
         filter: (input: any): input is string => input === 'pong',
-        signal
+        signal: controller.signal
       })
       setTimeout(() => controller.abort(), 10)
-      await expect(afterSubscribe).rejects.toEqual(new AbortError())
+      await expect(afterSubscribe).rejects.toBeInstanceOf(AbortError)
       expect(n.processors.size).toBe(0)
       expect(ops).toEqual(['received-subscription', 'ping-received-sending-pong', 'received-unsubscription'])
     })
