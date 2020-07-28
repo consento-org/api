@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/method-signature-style */
 /* eslint-disable @typescript-eslint/no-throw-literal */
-import { ISender, IReceiver, IEncodable, IEncryptedMessage, AbortError } from '@consento/crypto'
-import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, IBodyFilter, ENotificationType, IDecryptionError } from './types'
+import { IEncodable, wrapTimeout, ITimeoutOptions, cleanupPromise } from '../util'
+import { ISender, IReceiver, IEncryptedMessage } from '@consento/crypto'
+import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, ENotificationType, IDecryptionError, ISubscribeOptions, IReceiveOptions } from './types'
 import { mapOutputToInput } from './mapOutputToInput'
 
 export function isSuccess (input: INotification): input is ISuccessNotification {
@@ -28,28 +29,6 @@ class EmptyTransport implements INotificationsTransport {
   async send (): Promise<any[]> {
     throw new Error('Sending of notifications not implemented')
   }
-}
-
-type Callback<T> = (error: Error, t: T) => any
-
-function interceptCallback <T> (callback: Callback<T>, setup: () => () => any): Callback<T> {
-  const tearDown = setup()
-  return (error: Error, t: T) => {
-    const p = tearDown()
-    if (p instanceof Promise) {
-      p.then(
-        () => callback(error, t),
-        err => callback(error ?? err, t)
-      )
-    } else {
-      callback(error, t)
-    }
-  }
-}
-
-function toCallback <T> (resolve: (data: T) => any, reject: (error: Error) => any): Callback<T> {
-  return (error: Error, t: T) =>
-    (error !== null && error !== undefined) ? reject(error) : resolve(t)
 }
 
 export class Notifications implements INotifications {
@@ -136,121 +115,110 @@ export class Notifications implements INotifications {
     })
   }
 
-  async reset (receivers: IReceiver[], opts?: { signal?: AbortSignal }): Promise<boolean[]> {
-    const received: Map<IReceiver, boolean> = await mapOutputToInput({
-      input: receivers,
-      op: async input => await this._transport.reset(input, opts)
-    })
-    this._receivers = {}
-    return receivers.map(receiver => {
-      const changed = received.get(receiver)
-      if (changed) {
-        this._receivers[receiver.idBase64] = receiver
-      }
-      return changed
-    })
+  async reset (receivers: IReceiver[], opts?: ITimeoutOptions): Promise<boolean[]> {
+    return await wrapTimeout(async signal => {
+      const received: Map<IReceiver, boolean> = await mapOutputToInput({
+        input: receivers,
+        op: async input => await this._transport.reset(input, { signal })
+      })
+      this._receivers = {}
+      return receivers.map(receiver => {
+        const changed = received.get(receiver)
+        if (changed) {
+          this._receivers[receiver.idBase64] = receiver
+        }
+        return changed
+      })
+    }, opts)
   }
 
-  async subscribe (receivers: IReceiver[], { force, signal }: { force?: boolean, signal?: AbortSignal } = {}): Promise<boolean[]> {
-    if (receivers.length === 0) {
-      return []
-    }
-
-    const received: Map<IReceiver, boolean> = await mapOutputToInput({
-      input: force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
-      op: async input => await this._transport.subscribe(input, { signal })
-    })
-
-    return receivers.map(receiver => {
-      const changed = received.get(receiver) || false
-      if (changed) {
-        this._receivers[receiver.idBase64] = receiver
+  async subscribe (receivers: IReceiver[], opts: ISubscribeOptions = { force: false }): Promise<boolean[]> {
+    return await wrapTimeout(async signal => {
+      if (receivers.length === 0) {
+        return []
       }
-      return changed
-    })
+      const received: Map<IReceiver, boolean> = await mapOutputToInput({
+        input: opts.force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
+        op: async input => await this._transport.subscribe(input, { signal })
+      })
+
+      return receivers.map(receiver => {
+        const changed = received.get(receiver) || false
+        if (changed) {
+          this._receivers[receiver.idBase64] = receiver
+        }
+        return changed
+      })
+    }, opts)
   }
 
-  async unsubscribe (receivers: IReceiver[], { force, signal }: { force: boolean, signal?: AbortSignal } = { force: false }): Promise<boolean[]> {
-    if (receivers.length === 0) {
-      return []
-    }
-
-    const received: Map<IReceiver, boolean> = await mapOutputToInput({
-      input: force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
-      op: async input => await this._transport.unsubscribe(input, { signal })
-    })
-
-    return receivers.map(receiver => {
-      const changed = received.get(receiver) || false
-      if (changed) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete this._receivers[receiver.idBase64]
+  async unsubscribe (receivers: IReceiver[], opts: ISubscribeOptions = { force: false }): Promise<boolean[]> {
+    return await wrapTimeout(async signal => {
+      if (receivers.length === 0) {
+        return []
       }
-      return changed
-    })
+      const received: Map<IReceiver, boolean> = await mapOutputToInput({
+        input: opts.force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
+        op: async input => await this._transport.unsubscribe(input, { signal })
+      })
+
+      return receivers.map(receiver => {
+        const changed = received.get(receiver) || false
+        if (changed) {
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+          delete this._receivers[receiver.idBase64]
+        }
+        return changed
+      })
+    }, opts)
   }
 
-  async send (sender: ISender, message: IEncodable): Promise<string[]> {
-    const tickets = await this._transport.send(sender.annonymous, await sender.encrypt(message))
-    if (tickets.length === 0) {
-      throw Object.assign(new Error('No receiver registered!'), { code: 'no-receivers' })
-    }
-    let allErrors = true
-    for (const ticket of tickets) {
-      if (!/^error/.test(ticket)) {
-        allErrors = false
-        break
+  async send (sender: ISender, message: IEncodable, opts?: ITimeoutOptions): Promise<string[]> {
+    return await wrapTimeout(async signal => {
+      const tickets = await this._transport.send(sender.annonymous, await sender.encrypt(message), { signal })
+      if (tickets.length === 0) {
+        throw Object.assign(new Error('No receiver registered!'), { code: 'no-receivers' })
       }
-    }
-    if (allErrors) {
-      throw Object.assign(new Error(`Sending failed to all receivers! ${tickets.map(ticket => `"${String(ticket)}"`).join(', ')}`), { tickets, code: 'all-receivers-failed' })
-    }
-    return tickets
-  }
-
-  async receive <T extends IEncodable> (receiver: IReceiver, { filter, timeout, signal }: { filter?: IBodyFilter<T>, timeout?: number, signal?: AbortSignal } = {}): Promise<{ afterSubscribe: Promise<T> }> {
-    let _cb: Callback<T>
-    const processor = (message: INotification): void => {
-      if (isSuccess(message) && message.channelIdBase64 === receiver.idBase64) {
-        const body = message.body
-        if (typeof filter !== 'function' || filter(body)) {
-          _cb(null, body as T)
+      let allErrors = true
+      for (const ticket of tickets) {
+        if (!/^error/.test(ticket)) {
+          allErrors = false
+          break
         }
       }
-    }
-    const afterSubscribe = new Promise<T>((resolve, reject) => {
-      _cb = toCallback(resolve, reject)
-    })
-    this.processors.add(processor)
-    _cb = interceptCallback(_cb, () => {
-      return async (): Promise<void> => {
+      if (allErrors) {
+        throw Object.assign(new Error(`Sending failed to all receivers! ${tickets.map(ticket => `"${String(ticket)}"`).join(', ')}`), { tickets, code: 'all-receivers-failed' })
+      }
+      return tickets
+    }, opts)
+  }
+
+  async receive <T extends IEncodable> (receiver: IReceiver, opts: IReceiveOptions<T> = {}): Promise<{ afterSubscribe: Promise<T> }> {
+    const { filter } = opts
+    const received = cleanupPromise<T>(resolve => {
+      const processor = (message: INotification): void => {
+        if (isSuccess(message) && message.channelIdBase64 === receiver.idBase64) {
+          const body = message.body
+          if (typeof filter !== 'function' || filter(body)) {
+            resolve(body as T)
+          }
+        }
+      }
+      this.processors.add(processor)
+      return async () => {
         this.processors.delete(processor)
         await this.unsubscribe([receiver])
       }
-    })
+    }, opts)
     try {
-      await this.subscribe([receiver], { signal })
-      if (timeout !== undefined && timeout !== null) {
-        _cb = interceptCallback(_cb, () => {
-          const timer = setTimeout(
-            () => _cb(Object.assign(new Error(`Not received within ${timeout} milliseconds`), { code: 'timeout', timeout }), null),
-            timeout
-          )
-          return () => clearTimeout(timer)
-        })
-      }
-      if (signal !== undefined && signal !== null) {
-        _cb = interceptCallback(_cb, () => {
-          const listener = (): void => _cb(new AbortError(), null)
-          signal.addEventListener('abort', listener)
-          return () => signal.removeEventListener('abort', listener)
-        })
-      }
+      await this.subscribe([receiver], opts)
     } catch (err) {
-      _cb(err, null)
+      return {
+        afterSubscribe: Promise.reject(err)
+      }
     }
     return {
-      afterSubscribe
+      afterSubscribe: received
     }
   }
 
@@ -258,21 +226,19 @@ export class Notifications implements INotifications {
   async sendAndReceive <T extends IEncodable = IEncodable> (
     connection: IConnection,
     message: IEncodable,
-    opts?: {
-      filter?: IBodyFilter<T>
-      timeout?: number
-      signal?: AbortSignal
-    }
+    opts: IReceiveOptions<T> = {}
   ): Promise<{ afterSubscribe: Promise<T> }> {
-    const { afterSubscribe: receivePromise } = await this.receive(connection.receiver, opts)
-    return {
-      afterSubscribe: (async () => {
-        await Promise.race([
-          this.send(connection.sender, message),
-          receivePromise
-        ])
-        return await receivePromise
-      })()
-    }
+    return await wrapTimeout(async signal => {
+      const { afterSubscribe: receivePromise } = await this.receive<T>(connection.receiver, { signal })
+      return {
+        afterSubscribe: (async () => {
+          await Promise.race([
+            this.send(connection.sender, message, { signal }),
+            receivePromise
+          ])
+          return await receivePromise
+        })()
+      }
+    }, opts)
   }
 }

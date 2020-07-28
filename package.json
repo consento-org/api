@@ -38,7 +38,7 @@
     "/src/types/"
   ],
   "dependencies": {
-    "@consento/crypto": "^0.2.0"
+    "@consento/crypto": "^0.3.0"
   },
   "devDependencies": {
     "@leichtgewicht/pack-ts": "^1.0.1",

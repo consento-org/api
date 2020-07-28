@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/method-signature-style */
-import { EDecryptionError } from '@consento/crypto/core/types'
-import { ISender, IReceiver, IAnnonymous, IEncodable, IEncryptedMessage } from '@consento/crypto/types'
+import { EDecryptionError, ISender, IReceiver, IAnnonymous, IEncryptedMessage } from '@consento/crypto'
+import { IEncodable, ITimeoutOptions, IAbortOptions } from '../util'
 
 export * from '@consento/crypto/types'
 
 export interface INotificationsTransport {
-  subscribe (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
-  unsubscribe (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
-  reset (receivers: Iterable<IReceiver>, opts?: { signal?: AbortSignal }): Promise<boolean[]>
-  send (channel: IAnnonymous, message: IEncryptedMessage): Promise<any[]>
+  subscribe (receivers: Iterable<IReceiver>, opts?: IAbortOptions): Promise<boolean[]>
+  unsubscribe (receivers: Iterable<IReceiver>, opts?: IAbortOptions): Promise<boolean[]>
+  reset (receivers: Iterable<IReceiver>, opts?: IAbortOptions): Promise<boolean[]>
+  send (channel: IAnnonymous, message: IEncryptedMessage, opts?: IAbortOptions): Promise<any[]>
 }
 
 export interface INotificationControl {
@@ -21,6 +21,14 @@ export type INewNotificationsTransport = (control: INotificationControl) => INot
 
 export interface INotificationsOptions {
   transport: INewNotificationsTransport
+}
+
+export interface ISubscribeOptions extends ITimeoutOptions {
+  force?: boolean
+}
+
+export interface IReceiveOptions <T extends IEncodable> extends ITimeoutOptions {
+  filter?: IBodyFilter<T>
 }
 
 export enum ENotificationType {
@@ -79,11 +87,11 @@ export interface IConnection {
 }
 
 export interface INotifications {
-  subscribe (receivers: IReceiver[], opts?: { force?: boolean, signal?: AbortSignal }): Promise<boolean[]>
-  unsubscribe (receivers: IReceiver[], opts?: { force?: boolean, signal?: AbortSignal }): Promise<boolean[]>
-  reset (receivers: IReceiver[]): Promise<boolean[]>
+  subscribe (receivers: IReceiver[], opts?: ISubscribeOptions): Promise<boolean[]>
+  unsubscribe (receivers: IReceiver[], opts?: ISubscribeOptions): Promise<boolean[]>
+  reset (receivers: IReceiver[], opts?: ITimeoutOptions): Promise<boolean[]>
   processors: Set<INotificationProcessor>
-  send (sender: ISender, message: IEncodable): Promise<string[]>
-  receive <T extends IEncodable>(receiver: IReceiver, opts?: { filter?: IBodyFilter<T>, signal?: AbortSignal }): Promise<{ afterSubscribe: Promise<IEncodable> }>
-  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, opts?: { filter: IBodyFilter<T>, signal?: AbortSignal }): Promise<{ afterSubscribe: Promise<T> }>
+  send (sender: ISender, message: IEncodable, opts?: ITimeoutOptions): Promise<string[]>
+  receive <T extends IEncodable>(receiver: IReceiver, opts?: IReceiveOptions<T>): Promise<{ afterSubscribe: Promise<IEncodable> }>
+  sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, opts?: IReceiveOptions<T>): Promise<{ afterSubscribe: Promise<T> }>
 }

@@ -1,9 +1,9 @@
-import { setup, IAnnonymous, IReceiver, IEncryptedMessage, IConnection, AbortError } from '@consento/crypto'
-import { ICryptoCore } from '@consento/crypto/core/types'
+import { setup, IAnnonymous, IReceiver, IEncryptedMessage, IConnection } from '@consento/crypto'
+import { ICryptoCore } from '@consento/crypto/types'
 import { cores } from '@consento/crypto/core/cores'
 import { Notifications, isError, isSuccess } from '../index'
 import { INotificationsTransport, INotification, INotificationControl, INewNotificationsTransport } from '../types'
-import { AbortController } from 'abort-controller'
+import { AbortController, AbortError } from '../../util'
 
 const transportStub: INotificationsTransport = {
   // eslint-disable-next-line @typescript-eslint/require-await
