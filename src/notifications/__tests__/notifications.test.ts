@@ -52,7 +52,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         transport: () => ({
           ...transportStub,
           async send (receivedChannel: IAnnonymous, encrypted: any): Promise<any[]> {
-            expect(await receivedChannel.equals(sender.annonymous)).toBe(true)
+            expect(receivedChannel.idBase64).toBe(sender.idBase64)
             expect(await receiver.decrypt(encrypted))
               .toEqual({
                 body: message
@@ -129,7 +129,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       n.processors.add(notification => {
         ;(async () => {
           if (isSuccess(notification)) {
-            expect(await notification.receiver.equals(bobToAlice.receiver)).toBe(true)
+            expect(notification.receiver.idBase64).toBe(bobToAlice.receiver.idBase64)
             expect(notification.body).toBe('Holla')
           }
         })().catch(fail)
@@ -155,7 +155,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         },
         async send (channel: IAnnonymous, encrypted: any): Promise<any[]> {
           await control.message(channel.idBase64, encrypted)
-          return [await channel.equals(bobToAlice.sender.annonymous) ? aTicket : bTicket]
+          return [channel.idBase64 === bobToAlice.sender.idBase64 ? aTicket : bTicket]
         }
       }
       const n = new Notifications({
