@@ -92,6 +92,6 @@ export interface INotifications {
   reset (receivers: IReceiver[], opts?: ITimeoutOptions): Promise<boolean[]>
   processors: Set<INotificationProcessor>
   send (sender: ISender, message: IEncodable, opts?: ITimeoutOptions): Promise<string[]>
-  receive <T extends IEncodable>(receiver: IReceiver, opts?: IReceiveOptions<T>): Promise<{ afterSubscribe: Promise<IEncodable> }>
+  receive <T extends IEncodable>(receiver: IReceiver, opts?: IReceiveOptions<T>): Promise<{ afterSubscribe: Promise<T> }>
   sendAndReceive <T extends IEncodable>(connection: IConnection, message: IEncodable, opts?: IReceiveOptions<T>): Promise<{ afterSubscribe: Promise<T> }>
 }
