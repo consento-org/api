@@ -15,11 +15,11 @@ export async function mapOutputToInput <Input, Output> (
   while (true) {
     const inputStep = inputIter.next()
     const outputStep = outputIter.next()
-    if (inputStep.done) {
+    if (inputStep.done ?? false) {
       break
     }
-    if (outputStep.done) {
-      received.set(inputStep.value, null)
+    if (outputStep.done ?? false) {
+      throw new Error('Output finishes earlier than input.')
     } else {
       received.set(inputStep.value, outputStep.value)
     }

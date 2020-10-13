@@ -60,7 +60,7 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
         }
       }
       const decryption = await receiver.decrypt(encryptedMessage)
-      if (decryption.error !== undefined) {
+      if ('error' in decryption) {
         // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
         return {
           type: ENotificationType.error,
@@ -71,7 +71,7 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
       }
       return {
         type: ENotificationType.success,
-        body: decryption.body,
+        body: (decryption as ISuccessNotification).body,
         receiver,
         channelIdBase64
       }
@@ -119,8 +119,8 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
       })
       this._receivers = {}
       return receivers.map(receiver => {
-        const changed = received.get(receiver)
-        if (changed) {
+        const changed = received.get(receiver) ?? false
+        if (changed && receiver.idBase64 !== undefined) {
           this._receivers[receiver.idBase64] = receiver
         }
         return changed
@@ -128,18 +128,19 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
     }, opts)
   }
 
-  async subscribe (receivers: IReceiver[], opts: ISubscribeOptions = { force: false }): Promise<boolean[]> {
+  async subscribe (receivers: IReceiver[], opts: ISubscribeOptions = {}): Promise<boolean[]> {
+    const force = opts.force ?? false
     return await wrapTimeout(async signal => {
       if (receivers.length === 0) {
         return []
       }
       const received: Map<IReceiver, boolean> = await mapOutputToInput({
-        input: opts.force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
+        input: force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] === undefined),
         op: async input => await this._transport.subscribe(input, { signal })
       })
 
       return receivers.map(receiver => {
-        const changed = received.get(receiver) || false
+        const changed = received.get(receiver) ?? false
         if (changed) {
           this._receivers[receiver.idBase64] = receiver
         }
@@ -148,18 +149,19 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
     }, opts)
   }
 
-  async unsubscribe (receivers: IReceiver[], opts: ISubscribeOptions = { force: false }): Promise<boolean[]> {
+  async unsubscribe (receivers: IReceiver[], opts: ISubscribeOptions = {}): Promise<boolean[]> {
+    const force = opts.force ?? false
     return await wrapTimeout(async signal => {
       if (receivers.length === 0) {
         return []
       }
       const received: Map<IReceiver, boolean> = await mapOutputToInput({
-        input: opts.force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
+        input: force ? receivers : receivers.filter(receiver => this._receivers[receiver.idBase64] !== undefined),
         op: async input => await this._transport.unsubscribe(input, { signal })
       })
 
       return receivers.map(receiver => {
-        const changed = received.get(receiver) || false
+        const changed = received.get(receiver) ?? false
         if (changed) {
           // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete this._receivers[receiver.idBase64]

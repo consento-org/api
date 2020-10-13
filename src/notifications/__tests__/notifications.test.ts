@@ -75,7 +75,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
     it('processing okay', async () => {
       const { sender, receiver } = await createReceiver()
       const idBase64 = sender.idBase64
-      let control: INotificationControl
+      let control: INotificationControl | undefined
       const transportImpl = {
         ...transportStub,
         // eslint-disable-next-line @typescript-eslint/require-await
@@ -99,7 +99,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         return true
       })
       expect(await n.subscribe([receiver])).toEqual([true])
-      await control.message(idBase64, await sender.encrypt(sent))
+      await control?.message(idBase64, await sender.encrypt(sent))
     })
 
     it('a successful reset will clear all subscriptions', async () => {
@@ -286,7 +286,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           return [true]
         }
       }
-      let control: INotificationControl
+      let control: INotificationControl | undefined
       const n = new Notifications({
         transport (_control) {
           control = _control
@@ -307,7 +307,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
       await n.subscribe([receiver])
       await n.unsubscribe([receiver])
-      await control.message(idBase64, await sender.encrypt(sent))
+      await control?.message(idBase64, await sender.encrypt(sent))
     })
 
     it('receiving a certain message', async () => {
@@ -493,7 +493,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
 
     it('allowing for transport to initiate a reset', async () => {
       const { receiver } = await createReceiver()
-      let control: INotificationControl
+      let control: INotificationControl | undefined
       let resetCalled = false
       const n = new Notifications({
         transport (_control) {
@@ -508,7 +508,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         }
       })
       await n.subscribe([receiver])
-      await control.reset()
+      await control?.reset()
       expect(resetCalled).toBe(true)
     })
   })

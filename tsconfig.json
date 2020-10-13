@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "esModuleInterop": true,
+    "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
     "target": "es2018",
     "noImplicitAny": true,
@@ -10,6 +10,7 @@
     "outDir": "dist",
     "baseUrl": ".",
     "skipLibCheck": true,
+    "strict": true,
     "types": ["jest"],
     "declaration": true,
     "paths": {
