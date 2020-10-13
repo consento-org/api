@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-throw-literal */
 import { IEncodable, wrapTimeout, ITimeoutOptions, cleanupPromise, composeAbort } from '../util'
 import { ISender, IReceiver, IEncryptedMessage } from '@consento/crypto'
-import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, ENotificationType, IDecryptionError, ISubscribeOptions, IReceiveOptions } from './types'
+import { INotifications, INotificationsTransport, INotificationsOptions, IConnection, INotificationProcessor, EErrorCode, INotification, ISuccessNotification, INotificationError, ENotificationType, IDecryptionError, ISubscribeOptions, IReceiveOptions, INotificationContentInput } from './types'
 import { mapOutputToInput } from './mapOutputToInput'
 
 export function isSuccess (input: INotification): input is ISuccessNotification {
@@ -72,28 +72,21 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
         channelIdBase64
       }
     }
-    const send = (message: INotification): void => {
-      const iter = this.processors.values()
-      do {
-        const { done, value } = iter.next()
-        if (done) {
-          return
+    const process = async (message: INotification): Promise<boolean | INotificationContentInput> => {
+      for (const processor of this.processors) {
+        const processResult = await processor(message)
+        if (processResult !== false) {
+          return processResult
         }
-        try {
-          value(message)
-        } catch (err) {
-          setTimeout(() => {
-            console.error(err)
-          })
-        }
-      } while (true)
+      }
+      return false
     }
     this._transport = transport({
       error,
       reset: async (): Promise<void> => {
         await this.reset(Object.values(this._receivers))
       },
-      async message (channelIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<void> {
+      async message (channelIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<boolean | INotificationContentInput> {
         let message: INotification
         try {
           message = await getMessage(channelIdBase64, encryptedMessage)
@@ -105,7 +98,7 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
             channelIdBase64
           }
         }
-        send(message)
+        return await process(message)
       }
     })
   }
@@ -196,13 +189,15 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
     const { filter, signal: inputSignal } = opts
     const receiveControl = composeAbort(inputSignal)
     const received = cleanupPromise<T>(resolve => {
-      const processor = (message: INotification): void => {
+      const processor = async (message: INotification): Promise<boolean> => {
         if (isSuccess(message) && message.channelIdBase64 === receiver.idBase64) {
           const body = message.body
           if (typeof filter !== 'function' || filter(body)) {
             resolve(body as T)
+            return true
           }
         }
+        return false
       }
       this.processors.add(processor)
       return async () => {

@@ -61,7 +61,12 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           }
         })
       })
-      n.processors.add((message: INotification) => { if (isError(message)) fail(message) })
+      n.processors.add(async (message: INotification) => {
+        if (isError(message)) {
+          fail(message)
+        }
+        return false
+      })
       expect(await n.send(sender, 'Hello World')).toEqual([
         rnd
       ])
@@ -84,13 +89,14 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       }
       const sent = 'Hello World'
       const n = new Notifications({ transport })
-      n.processors.add((message: INotification) => {
+      n.processors.add(async (message: INotification) => {
         if (isSuccess(message)) {
           expect(receiver.idBase64).toBe(message.channelIdBase64)
           expect(message.body).toBe(sent)
         } else {
           fail(message)
         }
+        return true
       })
       expect(await n.subscribe([receiver])).toEqual([true])
       await control.message(idBase64, await sender.encrypt(sent))
@@ -126,13 +132,13 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         return transportImpl
       }
       const n = new Notifications({ transport })
-      n.processors.add(notification => {
-        ;(async () => {
-          if (isSuccess(notification)) {
-            expect(notification.receiver.idBase64).toBe(bobToAlice.receiver.idBase64)
-            expect(notification.body).toBe('Holla')
-          }
-        })().catch(fail)
+      n.processors.add(async notification => {
+        if (isSuccess(notification)) {
+          expect(notification.receiver.idBase64).toBe(bobToAlice.receiver.idBase64)
+          expect(notification.body).toBe('Holla')
+          return true
+        }
+        return false
       })
       await n.subscribe([aliceToBob.receiver])
       await n.reset([bobToAlice.receiver])
@@ -189,7 +195,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
       })
       const msg = await sender.encrypt('Hello World')
       await wait(10, cb => {
-        n.processors.add((message: INotification) => {
+        n.processors.add(async (message: INotification) => {
           if (isError(message)) {
             expect(message).toEqual({
               type: 'error',
@@ -200,6 +206,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           } else {
             fail(message)
           }
+          return true
         })
         control.message(idBase64, msg)
           .then(
@@ -286,7 +293,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
           return transport
         }
       })
-      n.processors.add((message: INotification) => {
+      n.processors.add(async (message: INotification) => {
         if (isError(message)) {
           expect(message).toEqual({
             type: 'error',
@@ -296,6 +303,7 @@ cores.forEach(({ name, crypto }: { name: string, crypto: ICryptoCore }) => {
         } else {
           fail(message)
         }
+        return true
       })
       await n.subscribe([receiver])
       await n.unsubscribe([receiver])

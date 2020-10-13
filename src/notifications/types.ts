@@ -13,7 +13,7 @@ export interface INotificationsTransport {
 
 export interface INotificationControl {
   error (error: Error): void
-  message (receiverIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<void>
+  message (receiverIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<boolean | INotificationContentInput | null | undefined>
   reset (): Promise<void>
 }
 
@@ -78,8 +78,54 @@ export interface ISuccessNotification<T extends IEncodable = IEncodable> {
   channelIdBase64: string
 }
 
+export type IAndroidNotificationPriority = 'min' | 'low' | 'default' | 'high' | 'max'
+
+export interface INotificationContentInput {
+  // Fields corresponding to NotificationContent
+  title?: string
+  subtitle?: string
+  body?: string
+  data?: { [key: string]: unknown }
+  badge?: number
+  sound?: boolean | string
+
+  // Android-specific fields
+  // See https://developer.android.com/reference/android/app/Notification.html#fields
+  // for more information on specific fields.
+  vibrate?: number[]
+  priority?: IAndroidNotificationPriority
+  // Format: '#AARRGGBB', '#RRGGBB' or one of the named colors,
+  // see https://developer.android.com/reference/kotlin/android/graphics/Color?hl=en
+  color?: string
+  // If set to false, the notification will not be automatically dismissed when clicked.
+  // The setting used when the value is not provided or is invalid is true (the notification
+  // will be dismissed automatically). Corresponds directly to Android's `setAutoCancel`
+  // behavior. In Firebase terms this property of a notification is called `sticky`.
+  // See:
+  // - https://developer.android.com/reference/android/app/Notification.Builder#setAutoCancel(boolean),
+  // - https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages#AndroidNotification.FIELDS.sticky
+  autoDismiss?: boolean
+  // If set to true, the notification cannot be dismissed by swipe. This setting defaults
+  // to false if not provided or is invalid. Corresponds directly do Android's `isOngoing` behavior.
+  // See: https://developer.android.com/reference/android/app/Notification.Builder#setOngoing(boolean)
+  sticky?: boolean
+
+  // iOS-specific fields
+  // See https://developer.apple.com/documentation/usernotifications/unmutablenotificationcontent?language=objc
+  // for more information on specific fields.
+  launchImageName?: string
+  attachments?: Array<{
+    url: string
+    identifier?: string
+    typeHint?: string
+    hideThumbnail?: boolean
+    thumbnailClipArea?: { x: number, y: number, width: number, height: number }
+    thumbnailTime?: number
+  }>
+}
+
 export type INotification <T extends IEncodable = IEncodable> = INotificationError | ISuccessNotification<T>
-export type INotificationProcessor = (message: INotification) => void
+export type INotificationProcessor = (message: INotification) => Promise<boolean | INotificationContentInput>
 export type IBodyFilter <T extends IEncodable> = (body: IEncodable) => body is T
 
 export interface IConnection {
