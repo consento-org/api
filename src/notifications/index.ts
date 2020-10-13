@@ -31,17 +31,13 @@ class EmptyTransport implements INotificationsTransport {
   }
 }
 
-export class Notifications implements INotifications {
-  _transport: INotificationsTransport
+export class Notifications <TTransport extends INotificationsTransport> implements INotifications<TTransport> {
+  _transport: TTransport
   _receivers: { [receiverIdBase64: string]: IReceiver }
 
   processors: Set<INotificationProcessor>
 
-  constructor ({ transport }: INotificationsOptions) {
-    if (transport === null || transport === undefined) {
-      console.warn('Warning: Transport is missing for consento API, notifications will not work.')
-      transport = () => new EmptyTransport()
-    }
+  constructor ({ transport }: INotificationsOptions<TTransport>) {
     this._receivers = {}
     this.processors = new Set()
 
@@ -113,6 +109,10 @@ export class Notifications implements INotifications {
         send(message)
       }
     })
+  }
+
+  get transport (): TTransport {
+    return this._transport
   }
 
   async reset (receivers: IReceiver[], opts?: ITimeoutOptions): Promise<boolean[]> {

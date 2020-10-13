@@ -1,15 +1,15 @@
 import { ICryptoCore } from '@consento/crypto/core/types'
 import { IConsentoCrypto } from '@consento/crypto'
-import { INotifications, INewNotificationsTransport } from './notifications/types'
+import { INotifications, INotificationsTransport, INewNotificationsTransport } from './notifications/types'
 
 export * from './notifications/types'
 
-export interface IAPIOptions {
+export interface IAPIOptions<TTransport extends INotificationsTransport = INotificationsTransport> {
   cryptoCore: ICryptoCore
-  notificationTransport: INewNotificationsTransport
+  notificationTransport: INewNotificationsTransport<TTransport>
 }
 
-export interface IAPI {
+export interface IAPI<TTransport extends INotificationsTransport = INotificationsTransport> {
   crypto: IConsentoCrypto
-  notifications: INotifications
+  notifications: INotifications<TTransport>
 }

@@ -17,10 +17,10 @@ export interface INotificationControl {
   reset (): Promise<void>
 }
 
-export type INewNotificationsTransport = (control: INotificationControl) => INotificationsTransport
+export type INewNotificationsTransport <TTransport extends INotificationsTransport = INotificationsTransport> = (control: INotificationControl) => TTransport
 
-export interface INotificationsOptions {
-  transport: INewNotificationsTransport
+export interface INotificationsOptions <TTransport extends INotificationsTransport = INotificationsTransport> {
+  transport: INewNotificationsTransport<TTransport>
 }
 
 export interface ISubscribeOptions extends ITimeoutOptions {
@@ -86,7 +86,8 @@ export interface IConnection {
   receiver: IReceiver
 }
 
-export interface INotifications {
+export interface INotifications<TTransport extends INotificationsTransport = INotificationsTransport> {
+  readonly transport: TTransport
   subscribe (receivers: IReceiver[], opts?: ISubscribeOptions): Promise<boolean[]>
   unsubscribe (receivers: IReceiver[], opts?: ISubscribeOptions): Promise<boolean[]>
   reset (receivers: IReceiver[], opts?: ITimeoutOptions): Promise<boolean[]>
