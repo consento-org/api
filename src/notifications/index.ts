@@ -31,6 +31,10 @@ class EmptyTransport implements INotificationsTransport {
   }
 }
 
+function isValidTicket (ticket: any): boolean {
+  return !/^error/.test(ticket)
+}
+
 function errorToConsole (error: Error): void {
   console.error(error)
 }
@@ -171,14 +175,8 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
       if (tickets.length === 0) {
         throw Object.assign(new Error('No receiver registered!'), { code: 'no-receivers' })
       }
-      let allErrors = true
-      for (const ticket of tickets) {
-        if (!/^error/.test(ticket)) {
-          allErrors = false
-          break
-        }
-      }
-      if (allErrors) {
+      const hasNoValidTicket = tickets.findIndex(isValidTicket) === -1
+      if (hasNoValidTicket) {
         throw Object.assign(new Error(`Sending failed to all receivers! ${tickets.map(ticket => `"${String(ticket)}"`).join(', ')}`), { tickets, code: 'all-receivers-failed' })
       }
       return tickets
