@@ -42,6 +42,7 @@ function errorToConsole (error: Error): void {
 export class Notifications <TTransport extends INotificationsTransport> implements INotifications<TTransport> {
   _transport: TTransport
   _receivers: { [receiverIdBase64: string]: IReceiver }
+  _reset: Promise<boolean[]> | undefined
 
   processors: Set<INotificationProcessor>
 
@@ -88,6 +89,7 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
     this._transport = transport({
       error,
       reset: async (): Promise<void> => {
+        await this._reset
         await this.reset(Object.values(this._receivers))
       },
       async message (channelIdBase64: string, encryptedMessage: IEncryptedMessage): Promise<boolean | INotificationContentInput> {
@@ -112,7 +114,9 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
   }
 
   async reset (receivers: IReceiver[], opts?: ITimeoutOptions): Promise<boolean[]> {
-    return await wrapTimeout(async signal => {
+    const prevReset = this._reset
+    this._reset = wrapTimeout(async signal => {
+      await prevReset
       const received: Map<IReceiver, boolean> = await mapOutputToInput({
         input: receivers,
         op: async input => await this._transport.reset(input, { signal })
@@ -126,6 +130,7 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
         return changed
       })
     }, opts)
+    return await this._reset
   }
 
   async subscribe (receivers: IReceiver[], opts: ISubscribeOptions = {}): Promise<boolean[]> {
