@@ -21,6 +21,7 @@ export type INewNotificationsTransport <TTransport extends INotificationsTranspo
 
 export interface INotificationsOptions <TTransport extends INotificationsTransport = INotificationsTransport> {
   transport: INewNotificationsTransport<TTransport>
+  error?: (error: Error) => void
 }
 
 export interface ISubscribeOptions extends ITimeoutOptions {

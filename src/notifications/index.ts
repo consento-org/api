@@ -31,13 +31,18 @@ class EmptyTransport implements INotificationsTransport {
   }
 }
 
+function errorToConsole (error: Error): void {
+  console.error(error)
+}
+
 export class Notifications <TTransport extends INotificationsTransport> implements INotifications<TTransport> {
   _transport: TTransport
   _receivers: { [receiverIdBase64: string]: IReceiver }
 
   processors: Set<INotificationProcessor>
 
-  constructor ({ transport }: INotificationsOptions<TTransport>) {
+  constructor ({ transport, error }: INotificationsOptions<TTransport>) {
+    error = error ?? errorToConsole
     this._receivers = {}
     this.processors = new Set()
 
@@ -84,13 +89,7 @@ export class Notifications <TTransport extends INotificationsTransport> implemen
       } while (true)
     }
     this._transport = transport({
-      error (error: Error): void {
-        send({
-          type: ENotificationType.error,
-          code: EErrorCode.transportError,
-          error
-        })
-      },
+      error,
       reset: async (): Promise<void> => {
         await this.reset(Object.values(this._receivers))
       },
