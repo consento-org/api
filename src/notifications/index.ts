@@ -13,7 +13,7 @@ export function isError (input: INotification): input is INotificationError {
   return input.type === ENotificationType.error
 }
 
-class EmptyTransport implements INotificationsTransport {
+export class EmptyTransport implements INotificationsTransport {
   async subscribe (receivers: IReceiver[]): Promise<boolean[]> {
     return receivers.map(() => false)
   }
